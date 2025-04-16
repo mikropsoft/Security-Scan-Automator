@@ -17,6 +17,8 @@ class SecurityTool:
         self.logs_dir = "security_tool_logs"
         self.create_logs_directory()
         self.terminal_width = shutil.get_terminal_size().columns
+        self._last_header = None
+        self._last_prompt = None
         
         self.security_tips = [
             "Always keep your systems and tools updated to the latest version.",
@@ -47,6 +49,35 @@ class SecurityTool:
     
     def clear_screen(self):
         os.system('cls' if os.name == 'nt' else 'clear')
+    
+    def check_dependencies(self):
+        missing_tools = []
+        
+        try:
+            nmap_version = subprocess.check_output(["nmap", "--version"], 
+                                                stderr=subprocess.STDOUT,
+                                                text=True)
+            print(f"{Fore.GREEN}✓ Nmap found: {nmap_version.split()[2]}{Style.RESET_ALL}")
+        except (subprocess.SubprocessError, FileNotFoundError):
+            missing_tools.append("Nmap")
+        
+        try:
+            sqlmap_process = subprocess.Popen(["sqlmap", "--version"],
+                                           stdout=subprocess.PIPE,
+                                           stderr=subprocess.PIPE,
+                                           text=True)
+            sqlmap_out, _ = sqlmap_process.communicate()
+            print(f"{Fore.GREEN}✓ SQLmap found{Style.RESET_ALL}")
+        except (subprocess.SubprocessError, FileNotFoundError):
+            missing_tools.append("SQLmap")
+        
+        if missing_tools:
+            print(f"{Fore.RED}Error: The following required tools are missing:{Style.RESET_ALL}")
+            for tool in missing_tools:
+                print(f"{Fore.RED}  - {tool}{Style.RESET_ALL}")
+            print(f"{Fore.YELLOW}Please install the missing tools and try again.{Style.RESET_ALL}")
+            return False
+        return True
     
     def print_banner(self):
         self.clear_screen()
@@ -124,8 +155,15 @@ class SecurityTool:
         pattern = r"^https?:\/\/(www\.)?[-a-zA-Z0-9@:%._\+~#=]{1,256}\.[a-zA-Z0-9()]{1,6}\b([-a-zA-Z0-9()@:%_\+.~#?&//=]*)$"
         return re.match(pattern, url) is not None
     
-    def run_command(self, command, log_file):
+    def run_command(self, command, log_file, tool_type="generic"):
         try:
+            if tool_type == "sqlmap":
+                if "--batch" in command and "-v" not in command:
+                    command.extend(["-v", "0"])  
+                
+                if "--output-dir" not in " ".join(command):
+                    command.extend(["--output-dir", self.logs_dir])
+            
             print(f"{Fore.CYAN}Running command: {Fore.WHITE}{' '.join(command)}{Style.RESET_ALL}\n")
             
             with open(log_file, 'a') as f:
@@ -133,21 +171,49 @@ class SecurityTool:
                 f.write(f"Timestamp: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
                 f.write("-" * 50 + "\n")
                 
-                process = subprocess.Popen(
-                    command,
-                    stdout=subprocess.PIPE,
-                    stderr=subprocess.PIPE,
-                    text=True,
-                    bufsize=1
-                )
-                
-                for line in process.stdout:
-                    print(line, end='')
-                    f.write(line)
-                
-                for line in process.stderr:
-                    print(f"{Fore.RED}{line}{Style.RESET_ALL}", end='')
-                    f.write(f"ERROR: {line}")
+                if tool_type == "sqlmap":
+                    process = subprocess.Popen(
+                        command,
+                        stdout=subprocess.PIPE,
+                        stderr=subprocess.PIPE,
+                        text=True,
+                        bufsize=1
+                    )
+                    
+                    seen_lines = set()  
+                    for line in process.stdout:
+                        if "Enter target URL with parameters" in line:
+                            if "Enter target URL with parameters" in seen_lines:
+                                continue
+                            seen_lines.add("Enter target URL with parameters")
+                        
+                        if "SQLmap Attack:" in line and "SQLmap Attack:" in seen_lines:
+                            continue
+                        elif "SQLmap Attack:" in line:
+                            seen_lines.add("SQLmap Attack:")
+                        
+                        print(line, end='')
+                        f.write(line)
+                    
+                    for line in process.stderr:
+                        print(f"{Fore.RED}{line}{Style.RESET_ALL}", end='')
+                        f.write(f"ERROR: {line}")
+                else:
+                    process = subprocess.Popen(
+                        command,
+                        stdout=subprocess.PIPE,
+                        stderr=subprocess.PIPE,
+                        text=True,
+                        bufsize=1
+                    )
+                    
+                    for line in process.stdout:
+                        print(line, end='')
+                        f.write(line)
+                    
+                    for line in process.stderr:
+                        print(f"{Fore.RED}{line}{Style.RESET_ALL}", end='')
+                        f.write(f"ERROR: {line}")
                 
                 process.wait()
                 
@@ -161,6 +227,12 @@ class SecurityTool:
                 f.write("-" * 50 + "\n\n")
             
             return process.returncode
+        except KeyboardInterrupt:
+            print(f"\n{Fore.YELLOW}Command interrupted by user.{Style.RESET_ALL}")
+            with open(log_file, 'a') as f:
+                f.write("Command interrupted by user.\n")
+                f.write("-" * 50 + "\n\n")
+            return 130 
         except Exception as e:
             with open(log_file, 'a') as f:
                 f.write(f"ERROR: {str(e)}\n")
@@ -403,7 +475,7 @@ class SecurityTool:
             f.write(f"Start Time: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
             f.write("-" * 50 + "\n\n")
         
-        retcode = self.run_command(command, log_file)
+        retcode = self.run_command(command, log_file, "nmap")
         
         if retcode == 0:
             print(f"\n{Fore.GREEN}Nmap scan completed successfully!{Style.RESET_ALL}")
@@ -446,10 +518,16 @@ class SecurityTool:
             return
         
         self.clear_screen()
-        self.print_section_header(f"SQLmap Attack: {sqlmap_options[choice-1]}")
+        target_selection = f"SQLmap Attack: {sqlmap_options[choice-1]}"
+        self.print_section_header(target_selection)
         
         timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
         log_file = os.path.join(self.logs_dir, f"sqlmap_attack_{timestamp}.log")
+        
+        with open(log_file, 'w') as f:
+            f.write(f"SQLmap Attack: {sqlmap_options[choice-1]}\n")
+            f.write(f"Start Time: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
+            f.write("-" * 50 + "\n\n")
         
         command = ["sqlmap"]
         
@@ -639,16 +717,20 @@ class SecurityTool:
         
         if additional_args:
             command.extend(additional_args.split())
+
+        if "--batch" in command and "-v" not in " ".join(command):
+            command.extend(["-v", "0"])  
+            
+        if "--no-colour" not in " ".join(command):
+            command.append("--no-colour")  
         
         print(f"{Fore.YELLOW}Starting SQLmap attack. Please wait...{Style.RESET_ALL}\n")
         
-        with open(log_file, 'w') as f:
-            f.write(f"SQLmap Attack: {sqlmap_options[choice-1]}\n")
+        with open(log_file, 'a') as f:
             f.write(f"Command: {' '.join(command)}\n")
-            f.write(f"Start Time: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
             f.write("-" * 50 + "\n\n")
         
-        retcode = self.run_command(command, log_file)
+        retcode = self.run_command(command, log_file, "sqlmap")
         
         if retcode == 0:
             print(f"\n{Fore.GREEN}SQLmap attack completed successfully!{Style.RESET_ALL}")
@@ -690,6 +772,10 @@ class SecurityTool:
     def run(self):
         try:
             self.print_banner()
+            
+            if not self.check_dependencies():
+                return
+                
             print(f"{Fore.CYAN}Welcome to the Security Scan Automator!{Style.RESET_ALL}")
             print(f"{Fore.YELLOW}This tool combines the power of Nmap and SQLmap for comprehensive security scanning.{Style.RESET_ALL}")
             print(f"{Fore.RED}IMPORTANT: Always ensure you have proper authorization before scanning any systems or networks.{Style.RESET_ALL}")
