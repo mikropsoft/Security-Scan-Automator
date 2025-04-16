@@ -1,96 +1,133 @@
-# 🚀 NmapLite & SqlmapLite  
+# SecScan Automator
 
-**Your Lightweight Security Command Organizers**
+A comprehensive security scanning automation tool that combines the power of Nmap and SQLmap. This terminal-based application provides an elegant, colorful, and user-friendly interface to perform a wide variety of security scans and attacks.
 
----
+## Features
 
-> **NmapLite & SqlmapLite** offer intuitive, user-friendly, menu-driven interfaces for the powerful cybersecurity tools **Nmap** and **Sqlmap**. Effortlessly perform comprehensive network scans and SQL injection tests, saving valuable time and enhancing productivity.
+- **Unified Interface**: Combines Nmap and SQLmap functionalities in a single tool
+- **User-Friendly Menus**: Colorful, readable terminal menus for easy navigation
+- **Comprehensive Scanning Options**:
+  - 22 different Nmap scanning functions with detailed descriptions
+  - 22 different SQLmap attack options with detailed descriptions
+- **Parameter Management**: Customizable parameters for all scan types
+- **Error Handling**: Provides retry options for incorrect inputs
+- **Logging System**: All scan results are saved with timestamps
+- **Log Management**: View, rename, or delete log files directly from the tool
+- **Security Tips**: Shows random security tips during navigation
+- **Modular Design**: Clean, well-structured Python code for easy maintenance
 
----
+## Prerequisites
 
-## 🌐 **NmapLite Features**
+- Python 3.6+
+- Nmap
+- SQLmap
+- Colorama (Python package)
 
-Quickly execute various network scans through an organized interface:
+## Installation
 
-| # | Scan Type | Description |
-|---|-----------|-------------|
-| **1** | 🌀 **Intense Scan** | Detailed, thorough network scan. |
-| **2** | 📡 **Intense Scan plus UDP** | Includes additional UDP ports. |
-| **3** | 🔎 **Intense Scan, All TCP Ports** | Comprehensive TCP analysis. |
-| **4** | 🙈 **Intense Scan, No Ping** | Stealth scan without ping requests. |
-| **5** | ⚡ **Ping Scan** | Quickly detect live hosts. |
-| **6** | 🚄 **Quick Scan** | Rapid scan of common ports. |
-| **7** | 🚀 **Quick Scan Plus** | Enhanced quick scan results. |
-| **8** | 🗺️ **Quick Traceroute** | Trace packet routes rapidly. |
-| **9** | 🛠️ **Regular Scan** | Balanced thoroughness and speed. |
-| **10** | 🐢 **Slow Comprehensive Scan** | Deep, extensive network analysis. |
-| **11** | 🎯 **Scan Specific Ports** | Targeted scanning for specific ports. |
-| **12** | 📌 **Service Version Detection** | Identify running service versions. |
-| **13** | 💻 **OS Detection** | Detect target operating systems. |
-| **14** | 🔥 **Aggressive Scan** | Combine advanced Nmap techniques. |
-| **15** | 🧱 **Detect Firewall** | Identify firewall configurations. |
-| **16** | 🛡️ **Scan for Vulnerabilities** | Find known vulnerabilities. |
-| **17** | 🦠 **Scan for Malware** | Malware detection scripts. |
-| **18** | 📜 **Scan with NSE Scripts** | Use custom NSE scripts. |
-| **19** | ❤️‍🩹 **Detect Heartbleed Vulnerability** | Specialized Heartbleed test. |
-| **20** | 🌍 **Traceroute and Geolocation** | IP geolocation and traceroute analysis. |
-
----
-
-## 💾 **SqlmapLite Features**
-
-Efficiently conduct SQL injection testing and database reconnaissance:
-
-| # | Scan Type | Description |
-|---|-----------|-------------|
-| **1** | 🧪 **Test for SQL Injection** | Automatically find injection vulnerabilities. |
-| **2** | 🔍 **Fingerprint DBMS** | Detect DB type/version. |
-| **3** | 📚 **List Databases** | Enumerate databases. |
-| **4** | 📑 **List Tables** | Tables within selected database. |
-| **5** | 📊 **List Columns** | Columns in specified table. |
-| **6** | 📥 **Dump Table Entries** | Export table data. |
-| **7** | 🔎 **Dump Entries by Condition** | Conditional data extraction. |
-| **8** | 🔖 **Search Database Names** | Search databases by pattern. |
-| **9** | 📋 **Search Table Names** | Find tables by pattern. |
-| **10** | 🗂️ **Search Column Names** | Identify columns by pattern. |
-| **11** | 🔐 **Check Privileges** | Evaluate DBMS user privileges. |
-| **12** | 🎭 **Check Roles** | Review DBMS user roles. |
-| **13** | 🔑 **Retrieve Password Hashes** | Extract user password hashes. |
-| **14** | 🚧 **Test for WAF/IPS** | Bypass security with tamper scripts. |
-| **15** | 👥 **Enumerate Users** | List database users. |
-| **16** | 📜 **Enumerate User Privileges** | Detail users' privileges. |
-| **17** | 🎩 **Enumerate User Roles** | Show users' assigned roles. |
-| **18** | 🧾 **Enumerate Schema** | Detailed DB schema info. |
-| **19** | 🗃️ **System Databases** | Identify system-level DBs. |
-| **20** | 📂 **Enumerate Data** | Comprehensive data retrieval. |
-
----
-
-## 🔧 **Getting Started**
-
-Quick installation steps for **NmapLite & SqlmapLite**:
-
+1. Clone the repository:
 ```bash
-git clone https://github.com/mikropsoft/NmapLite-SqlmapLite.git
-cd NmapLite-SqlmapLite
-sudo python main.py
+git clone https://github.com/mikropsoft/Security-Scan-Automator.git
+cd Security-Scan-Automator
 ```
 
----
+2. Install required Python packages:
+```bash
+pip install colorama
+```
 
-## 🤝 **Contributing**
+3. Ensure Nmap and SQLmap are installed on your system:
 
-Contributions are highly encouraged! To suggest improvements, add new features, or fix bugs, simply:
+For Debian/Ubuntu:
+```bash
+sudo apt update
+sudo apt install nmap
+sudo apt install sqlmap
+```
 
-- Fork the repository  
-- Submit your changes via a Pull Request  
+For CentOS/RHEL:
+```bash
+sudo yum install nmap
+sudo yum install sqlmap
+```
 
----
+For macOS (using Homebrew):
+```bash
+brew install nmap
+brew install sqlmap
+```
 
-## 📜 **License**
+## Usage
 
-This project is available under the [MIT License](LICENSE).
+Run the tool with:
 
----
+```bash
+python secscan_automator.py
+```
 
-<img src="https://raw.githubusercontent.com/matfantinel/matfantinel/master/waves.svg" width="100%" height="100">
+### Main Menu Options:
+
+1. **Nmap Scanning Options** - Perform various network reconnaissance scans
+2. **SQLmap Attack Options** - Perform SQL injection tests and attacks
+3. **Log Management** - View, rename, or delete scan logs
+
+### Nmap Scanning Options:
+
+The tool offers 22 different Nmap scan options including:
+- Quick scans
+- Intense scans
+- Service detection
+- OS fingerprinting
+- Vulnerability scanning
+- Firewall evasion techniques
+- And more...
+
+### SQLmap Attack Options:
+
+Various SQLmap attack options including:
+- Basic GET/POST request scans
+- Database enumeration
+- Table dumping
+- WAF bypass techniques
+- Advanced injection techniques
+- Shell access attempts
+- And more...
+
+## Important Security Note
+
+This tool is intended for legitimate security testing only. Always ensure you have proper authorization before scanning any systems or networks. Unauthorized scanning may be illegal and is against ethical guidelines.
+
+## Log Management
+
+All scan results are automatically saved to timestamped log files in the `security_tool_logs` directory. The tool provides options to:
+- View logs
+- Rename log files
+- Delete log files
+
+## Contributing
+
+Contributions are welcome! Please feel free to submit a Pull Request.
+
+1. Fork the repository
+2. Create your feature branch (`git checkout -b feature/amazing-feature`)
+3. Commit your changes (`git commit -m 'Add some amazing feature'`)
+4. Push to the branch (`git push origin feature/amazing-feature`)
+5. Open a Pull Request
+
+## License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+## Disclaimer
+
+This tool is provided for educational and legitimate security testing purposes only. The authors are not responsible for any misuse or damage caused by this program.
+
+## Author
+
+Holi - [GitHub Profile](https://github.com/mikropsoft)
+
+## Acknowledgments
+
+- The Nmap Security Scanner team
+- The SQLmap development team
+- Contributors to the Colorama Python package
