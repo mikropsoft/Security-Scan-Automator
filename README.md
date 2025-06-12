@@ -1,133 +1,92 @@
-# SecScan Automator
+## SecScan Automator
 
-A comprehensive security scanning automation tool that combines the power of Nmap and SQLmap. This terminal-based application provides an elegant, colorful, and user-friendly interface to perform a wide variety of security scans and attacks.
+A powerful, modular, and user-friendly Python tool for managing, automating, and reporting on security scans with advanced configuration, validation, and reporting capabilities.
 
-## Features
+---
 
-- **Unified Interface**: Combines Nmap and SQLmap functionalities in a single tool
-- **User-Friendly Menus**: Colorful, readable terminal menus for easy navigation
-- **Comprehensive Scanning Options**:
-  - 22 different Nmap scanning functions with detailed descriptions
-  - 22 different SQLmap attack options with detailed descriptions
-- **Parameter Management**: Customizable parameters for all scan types
-- **Error Handling**: Provides retry options for incorrect inputs
-- **Logging System**: All scan results are saved with timestamps
-- **Log Management**: View, rename, or delete log files directly from the tool
-- **Security Tips**: Shows random security tips during navigation
-- **Modular Design**: Clean, well-structured Python code for easy maintenance
+**Features**
 
-## Prerequisites
+- **Robust Input Validation:** Comprehensive validation for IPs, URLs, domains, and filenames to prevent user errors and ensure data integrity.
+- **Persistent Configuration Management:** Easily customizable settings with auto-backup and advanced options (themes, concurrent scans, report formats, etc.).
+- **Integrated SQLite Database:** Tracks scan histories, reports, vulnerabilities, targets, and error logs for full auditability.
+- **Scan Templates:** Predefined and categorized scan templates for Nmap and SQLMap (easy, medium, hard), supporting both quick and advanced security assessments.
+- **Advanced Progress Bar:** Real-time, visually appealing progress feedback with ETA and sub-step tracking.
+- **Comprehensive Reporting:** Generates HTML, TXT, and JSON reports with metadata, scan results, and statistics.
+- **Quote of the Day:** Motivational and security-related daily quotes for a touch of inspiration.
+- **Error Logging and Data Cleanup:** Automatic error tracking and periodic cleanup of old data for smooth operation.
+- **Thread-Safe Operations:** All critical operations are thread-safe, supporting concurrent scans and database access.
 
-- Python 3.6+
-- Nmap
-- SQLmap
-- Colorama (Python package)
+---
 
 ## Installation
 
-1. Clone the repository:
 ```bash
 git clone https://github.com/mikropsoft/Security-Scan-Automator.git
 cd Security-Scan-Automator
 ```
 
-2. Install required Python packages:
-```bash
-pip install colorama
-```
-
-3. Ensure Nmap and SQLmap are installed on your system:
-
-For Debian/Ubuntu:
-```bash
-sudo apt update
-sudo apt install nmap
-sudo apt install sqlmap
-```
-
-For CentOS/RHEL:
-```bash
-sudo yum install nmap
-sudo yum install sqlmap
-```
-
-For macOS (using Homebrew):
-```bash
-brew install nmap
-brew install sqlmap
-```
+---
 
 ## Usage
 
-Run the tool with:
-
 ```bash
-python secscan_automator.py
+python3 secscan_automator.py
 ```
 
-### Main Menu Options:
+- Configure your preferences in `secscan_config.json` or via the interactive menu.
+- Start a scan, select a scan template (Nmap or SQLMap), and monitor progress in real time.
+- View or export reports from the `reports/` directory.
+- All scan history, targets, and vulnerabilities are tracked in `secscan.db`.
 
-1. **Nmap Scanning Options** - Perform various network reconnaissance scans
-2. **SQLmap Attack Options** - Perform SQL injection tests and attacks
-3. **Log Management** - View, rename, or delete scan logs
+---
 
-### Nmap Scanning Options:
+## Main Modules
 
-The tool offers 22 different Nmap scan options including:
-- Quick scans
-- Intense scans
-- Service detection
-- OS fingerprinting
-- Vulnerability scanning
-- Firewall evasion techniques
-- And more...
+| Module             | Description                                                             |
+|--------------------|-------------------------------------------------------------------------|
+| `InputValidator`   | Validates user inputs for menu, IP, URL, domains, and filenames         |
+| `ConfigManager`    | Manages persistent and backup-able configuration settings               |
+| `DatabaseManager`  | Handles all database operations (scans, reports, targets, errors, etc.) |
+| `ScanTemplates`    | Provides categorized Nmap/SQLMap scan templates                        |
+| `AdvancedProgressBar` | Displays animated, colored progress bar with ETA and sub-steps       |
+| `ReportManager`    | Generates HTML, TXT, and JSON reports                                   |
+| `QuoteGenerator`   | Displays a daily security quote                                         |
 
-### SQLmap Attack Options:
+---
 
-Various SQLmap attack options including:
-- Basic GET/POST request scans
-- Database enumeration
-- Table dumping
-- WAF bypass techniques
-- Advanced injection techniques
-- Shell access attempts
-- And more...
+## Reporting
 
-## Important Security Note
+- Reports are automatically generated after each scan and saved in the `reports/` directory.
+- Supports HTML, TXT, and JSON formats for easy sharing and integration.
+- All report metadata and statistics are stored in the database for future reference.
 
-This tool is intended for legitimate security testing only. Always ensure you have proper authorization before scanning any systems or networks. Unauthorized scanning may be illegal and is against ethical guidelines.
+---
 
-## Log Management
+## Requirements
 
-All scan results are automatically saved to timestamped log files in the `security_tool_logs` directory. The tool provides options to:
-- View logs
-- Rename log files
-- Delete log files
+- Python 3.7+
+- Standard Python libraries (sqlite3, threading, json, etc.)
+- Nmap, SQLMap (if using scan templates)
 
-## Contributing
-
-Contributions are welcome! Please feel free to submit a Pull Request.
-
-1. Fork the repository
-2. Create your feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add some amazing feature'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
+---
 
 ## License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+MIT License 
 
-## Disclaimer
+---
 
-This tool is provided for educational and legitimate security testing purposes only. The authors are not responsible for any misuse or damage caused by this program.
+## Contributing
 
-## Author
+Pull requests are welcome! Please open an issue first to discuss your ideas.
 
-Holi - [GitHub Profile](https://github.com/mikropsoft)
+---
 
-## Acknowledgments
+## Acknowledgements
 
-- The Nmap Security Scanner team
-- The SQLmap development team
-- Contributors to the Colorama Python package
+- Inspired by best practices in penetration testing and security automation.
+- Uses open-source tools and libraries for maximum flexibility and reliability.
+
+---
+
+**Stay secure and keep testing!**
